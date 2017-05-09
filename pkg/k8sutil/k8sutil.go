@@ -26,10 +26,12 @@ package k8sutil
 
 import (
 	"os"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 
 	k8serrors "k8s.io/client-go/pkg/api/errors"
+	"k8s.io/client-go/pkg/fields"
 
 	myspec "github.com/upmc-enterprises/kong-operator/pkg/spec"
 	"k8s.io/client-go/kubernetes"
@@ -42,12 +44,13 @@ import (
 	"k8s.io/client-go/pkg/runtime"
 	"k8s.io/client-go/pkg/runtime/serializer"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
 	namespace = os.Getenv("NAMESPACE")
-	tprName   = "kong.enterprises.upmc.com"
+	tprName   = "kong-cluster.enterprises.upmc.com"
 )
 
 // KubeInterface abstracts the kubernetes client
@@ -165,17 +168,81 @@ func (k *K8sutil) CreateKubernetesThirdPartyResource() error {
 				Description: "Managed kong clusters",
 			}
 
-			result, err := k.Kclient.ThirdPartyResources().Create(tpr)
+			_, err := k.Kclient.ThirdPartyResources().Create(tpr)
 			if err != nil {
 				panic(err)
 			}
-			logrus.Infof("CREATED: %#v\nFROM: %#v\n", result, tpr)
+			logrus.Infof("CREATED TPR: %#v", tpr.ObjectMeta.Name)
 		} else {
 			panic(err)
 		}
 	} else {
-		logrus.Infof("SKIPPING: already exists %#v\n", tpr.ObjectMeta.Name)
+		logrus.Infof("SKIPPING: already exists %#v", tpr.ObjectMeta.Name)
 	}
 
 	return nil
+}
+
+// GetKongClusters returns a list of custom clusters defined
+func (k *K8sutil) GetKongClusters() ([]myspec.KongCluster, error) {
+	kongList := myspec.KongClusterList{}
+	var err error
+
+	for {
+		err = k.TprClient.Get().Resource("KongClusters").Do().Into(&kongList)
+
+		if err != nil {
+			logrus.Error("error getting kong clusters")
+			logrus.Error(err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		break
+	}
+
+	return kongList.Items, nil
+}
+
+// MonitorKongEvents watches for new or removed clusters
+func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *myspec.KongCluster, <-chan error) {
+	// Validate Namespace exists
+	if len(namespace) == 0 {
+		logrus.Errorln("WARNING: No namespace found! Events will not be able to be watched!")
+	}
+
+	events := make(chan *myspec.KongCluster)
+	errc := make(chan error, 1)
+
+	source := cache.NewListWatchFromClient(k.TprClient, "kongclusters", api.NamespaceAll, fields.Everything())
+
+	createAddHandler := func(obj interface{}) {
+		event := obj.(*myspec.KongCluster)
+		event.Type = "ADDED"
+		events <- event
+	}
+	createDeleteHandler := func(obj interface{}) {
+		event := obj.(*myspec.KongCluster)
+		event.Type = "DELETED"
+		events <- event
+	}
+
+	updateHandler := func(old interface{}, obj interface{}) {
+		event := obj.(*myspec.KongCluster)
+		event.Type = "MODIFIED"
+		events <- event
+	}
+
+	_, controller := cache.NewInformer(
+		source,
+		&myspec.KongCluster{},
+		time.Minute*60,
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    createAddHandler,
+			UpdateFunc: updateHandler,
+			DeleteFunc: createDeleteHandler,
+		})
+
+	go controller.Run(stopchan)
+
+	return events, errc
 }

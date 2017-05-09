@@ -88,7 +88,7 @@ func Main() int {
 	// Watch for events that add, modify, or delete KongCluster definitions andlog
 	// process them asynchronously.
 	logrus.Info("Watching for kong events...")
-	wg.Add(1)
+	// wg.Add(1)
 	// processor.WatchElasticSearchClusterEvents(doneChan, &wg)
 
 	signalChan := make(chan os.Signal, 1)

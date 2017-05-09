@@ -18,7 +18,7 @@ push:
 	docker push $(PREFIX)/kong-operator:$(TAG)
 
 clean:
-	rm -f kong-operator
+	rm -rf _output
 
 test: clean
 	go test $$(go list ./... | grep -v /vendor/)
