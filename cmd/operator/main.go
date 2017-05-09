@@ -35,6 +35,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/upmc-enterprises/kong-operator/pkg/controller"
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
+	"github.com/upmc-enterprises/kong-operator/pkg/processor"
 )
 
 var (
@@ -71,7 +72,7 @@ func Main() int {
 	// Init
 	k8sclient, err := k8sutil.New(kubeCfgFile, masterHost)
 	controller, err := controller.New("kongcluster", namespace, k8sclient)
-	// processor, err := processor.New(k8sclient, baseImage)
+	processor, err := processor.New(k8sclient, baseImage)
 
 	if err != nil {
 		logrus.Error("Could not init Controller! ", err)
@@ -83,13 +84,13 @@ func Main() int {
 
 	// Kick it off
 	controller.Run()
-	// processor.Run()
+	processor.Run()
 
-	// Watch for events that add, modify, or delete KongCluster definitions andlog
+	// Watch for events that add, modify, or delete KongCluster definitions and
 	// process them asynchronously.
 	logrus.Info("Watching for kong events...")
-	// wg.Add(1)
-	// processor.WatchElasticSearchClusterEvents(doneChan, &wg)
+	wg.Add(1)
+	processor.WatchKongEvents(doneChan, &wg)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)

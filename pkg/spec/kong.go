@@ -45,6 +45,9 @@ type KongCluster struct {
 
 // ClusterSpec defines cluster options
 type ClusterSpec struct {
+	// Replicas allows user to override the base image
+	Replicas int `json:"replicas"`
+
 	// BaseImage allows user to override the base image
 	BaseImage string `json:"base-image"`
 }

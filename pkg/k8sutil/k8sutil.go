@@ -32,6 +32,7 @@ import (
 
 	k8serrors "k8s.io/client-go/pkg/api/errors"
 	"k8s.io/client-go/pkg/fields"
+	"k8s.io/client-go/pkg/util/intstr"
 
 	myspec "github.com/upmc-enterprises/kong-operator/pkg/spec"
 	"k8s.io/client-go/kubernetes"
@@ -51,6 +52,11 @@ import (
 var (
 	namespace = os.Getenv("NAMESPACE")
 	tprName   = "kong-cluster.enterprises.upmc.com"
+)
+
+const (
+	kongProxyServiceName = "kong-proxy"
+	kongAdminServiceName = "kong-admin"
 )
 
 // KubeInterface abstracts the kubernetes client
@@ -245,4 +251,125 @@ func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *myspec.Kong
 	go controller.Run(stopchan)
 
 	return events, errc
+}
+
+// CreateKongProxyService creates the kong proxy service
+func (k *K8sutil) CreateKongProxyService() error {
+
+	// Check if service exists
+	svc, err := k.Kclient.Services(namespace).Get(kongProxyServiceName)
+
+	// Service missing, create
+	if len(svc.Name) == 0 {
+		logrus.Infof("%s not found, creating...", kongProxyServiceName)
+
+		clientSvc := &v1.Service{
+			ObjectMeta: v1.ObjectMeta{
+				Name: kongProxyServiceName,
+				Labels: map[string]string{
+					"name": kongProxyServiceName,
+				},
+			},
+			Spec: v1.ServiceSpec{
+				Selector: map[string]string{
+					"app": "kong",
+				},
+				Ports: []v1.ServicePort{
+					v1.ServicePort{
+						Name:       "kong-proxy",
+						Port:       80,
+						TargetPort: intstr.FromInt(8000),
+						Protocol:   "TCP",
+					},
+					v1.ServicePort{
+						Name:       "kong-proxy-ssl",
+						Port:       443,
+						TargetPort: intstr.FromInt(8443),
+						Protocol:   "TCP",
+					},
+				},
+				Type: v1.ServiceTypeLoadBalancer,
+				LoadBalancerSourceRanges: []string{
+					"0.0.0.0/0",
+				},
+			},
+		}
+
+		_, err := k.Kclient.Services(namespace).Create(clientSvc)
+
+		if err != nil {
+			logrus.Error("Could not create proxy service", err)
+			return err
+		}
+	} else if err != nil {
+		logrus.Error("Could not get proxy service! ", err)
+		return err
+	}
+
+	return nil
+}
+
+// CreateKongAdminService creates the kong proxy service
+func (k *K8sutil) CreateKongAdminService() error {
+
+	// Check if service exists
+	svc, err := k.Kclient.Services(namespace).Get(kongAdminServiceName)
+
+	// Service missing, create
+	if len(svc.Name) == 0 {
+		logrus.Infof("%s not found, creating...", kongAdminServiceName)
+
+		clientSvc := &v1.Service{
+			ObjectMeta: v1.ObjectMeta{
+				Name: kongAdminServiceName,
+				Labels: map[string]string{
+					"name": kongAdminServiceName,
+				},
+			},
+			Spec: v1.ServiceSpec{
+				Selector: map[string]string{
+					"app": "kong",
+				},
+				Ports: []v1.ServicePort{
+					v1.ServicePort{
+						Name:       "kong-admin",
+						Port:       8444,
+						TargetPort: intstr.FromInt(8444),
+						Protocol:   "TCP",
+					},
+				},
+				Type: v1.ServiceTypeClusterIP,
+			},
+		}
+
+		_, err := k.Kclient.Services(namespace).Create(clientSvc)
+
+		if err != nil {
+			logrus.Error("Could not create admin service: ", err)
+			return err
+		}
+	} else if err != nil {
+		logrus.Error("Could not get admin service: ", err)
+		return err
+	}
+
+	return nil
+}
+
+// DeleteServices creates the kong services
+func (k *K8sutil) DeleteServices() {
+
+	err := k.Kclient.Services(namespace).Delete(kongAdminServiceName, &v1.DeleteOptions{})
+	if err != nil {
+		logrus.Error("Could not delete service "+kongAdminServiceName+":", err)
+	} else {
+		logrus.Infof("Delete service: %s", kongAdminServiceName)
+	}
+
+	err = k.Kclient.Services(namespace).Delete(kongProxyServiceName, &v1.DeleteOptions{})
+	if err != nil {
+		logrus.Error("Could not delete service "+kongProxyServiceName+":", err)
+	} else {
+		logrus.Infof("Delete service: %s", kongProxyServiceName)
+	}
 }
