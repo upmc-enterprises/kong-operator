@@ -25,10 +25,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package processor
 
 import (
+	"os"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
+	"github.com/upmc-enterprises/kong-operator/pkg/pg"
 	myspec "github.com/upmc-enterprises/kong-operator/pkg/spec"
 )
 
@@ -36,6 +38,7 @@ import (
 // not happen at the same time.
 var (
 	processorLock = &sync.Mutex{}
+	namespace     = os.Getenv("NAMESPACE")
 )
 
 // Processor object
@@ -105,8 +108,9 @@ func (p *Processor) refreshClusters() error {
 
 		p.clusters[cluster.Metadata.Name] = &myspec.KongCluster{
 			Spec: myspec.ClusterSpec{
-				Replicas:  cluster.Spec.Replicas,
-				BaseImage: cluster.Spec.BaseImage,
+				Replicas:          cluster.Spec.Replicas,
+				BaseImage:         cluster.Spec.BaseImage,
+				UseSamplePostgres: cluster.Spec.UseSamplePostgres,
 			},
 		}
 	}
@@ -133,6 +137,14 @@ func (p *Processor) processKong(c *myspec.KongCluster) error {
 	// Refresh
 	p.refreshClusters()
 
+	// Deploy sample postgres deployments?
+	if c.Spec.UseSamplePostgres {
+		pg.SimplePostgresService(p.k8sclient, namespace)
+		pg.SimplePostgresDeployment(p.k8sclient, namespace)
+	} else {
+		pg.DeleteSimplePostgres(p.k8sclient, namespace)
+	}
+
 	// Is a base image defined in the custom cluster?
 	var baseImage = p.calcBaseImage(p.baseImage, c.Spec.BaseImage)
 
@@ -142,8 +154,8 @@ func (p *Processor) processKong(c *myspec.KongCluster) error {
 	p.k8sclient.CreateKongAdminService()
 	p.k8sclient.CreateKongProxyService()
 
-	// p.k8sclient.CreateClientMasterDeployment("client", baseImage, &c.Spec.ClientNodeReplicas, c.Spec.JavaOptions, c.Spec.Resources)
-	// p.k8sclient.CreateClientMasterDeployment("master", baseImage, &c.Spec.MasterNodeReplicas, c.Spec.JavaOptions, c.Spec.Resources)
+	// Create deployment
+	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas)
 
 	return nil
 }
@@ -151,22 +163,24 @@ func (p *Processor) processKong(c *myspec.KongCluster) error {
 func (p *Processor) deleteKong(c *myspec.KongCluster) error {
 	logrus.Println("--------> Kong Cluster deleted...removing all components...")
 
-	// err := p.k8sclient.DeleteClientMasterDeployment("client")
-	// if err != nil {
-	// 	logrus.Error("Could not delete client deployment:", err)
-	// }
+	err := p.k8sclient.DeleteKongDeployment()
+	if err != nil {
+		logrus.Error("Could not delete kong deployment:", err)
+	}
 
-	// err = p.k8sclient.DeleteClientMasterDeployment("master")
-	// if err != nil {
-	// 	logrus.Error("Could not delete master deployment:", err)
-	// }
+	err = p.k8sclient.DeleteAdminService()
+	if err != nil {
+		logrus.Error("Could not delete admin service:", err)
+	}
 
-	// err = p.k8sclient.DeleteStatefulSet()
-	// if err != nil {
-	// 	logrus.Error("Could not delete stateful set:", err)
-	// }
+	err = p.k8sclient.DeleteProxyService()
+	if err != nil {
+		logrus.Error("Could not delete proxy service:", err)
+	}
 
-	p.k8sclient.DeleteServices()
+	if c.Spec.UseSamplePostgres {
+		pg.DeleteSimplePostgres(p.k8sclient, namespace)
+	}
 
 	return nil
 }

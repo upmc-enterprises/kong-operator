@@ -5,6 +5,7 @@
     "name": "example-kong-cluster"
   },
   "spec": {
-      "replicas": 3
+      "replicas": 1,
+      "useSamplePostgres": true
   }
 }

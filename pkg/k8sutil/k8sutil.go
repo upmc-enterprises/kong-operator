@@ -25,6 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package k8sutil
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -57,6 +58,7 @@ var (
 const (
 	kongProxyServiceName = "kong-proxy"
 	kongAdminServiceName = "kong-admin"
+	kongDeploymentName   = "kong"
 )
 
 // KubeInterface abstracts the kubernetes client
@@ -356,9 +358,20 @@ func (k *K8sutil) CreateKongAdminService() error {
 	return nil
 }
 
-// DeleteServices creates the kong services
-func (k *K8sutil) DeleteServices() {
+// DeleteProxyService creates the kong proxy service
+func (k *K8sutil) DeleteProxyService() error {
+	err := k.Kclient.Services(namespace).Delete(kongProxyServiceName, &v1.DeleteOptions{})
+	if err != nil {
+		logrus.Error("Could not delete service "+kongProxyServiceName+":", err)
+	} else {
+		logrus.Infof("Delete service: %s", kongProxyServiceName)
+	}
 
+	return err
+}
+
+// DeleteAdminService creates the kong admin service
+func (k *K8sutil) DeleteAdminService() error {
 	err := k.Kclient.Services(namespace).Delete(kongAdminServiceName, &v1.DeleteOptions{})
 	if err != nil {
 		logrus.Error("Could not delete service "+kongAdminServiceName+":", err)
@@ -366,10 +379,174 @@ func (k *K8sutil) DeleteServices() {
 		logrus.Infof("Delete service: %s", kongAdminServiceName)
 	}
 
-	err = k.Kclient.Services(namespace).Delete(kongProxyServiceName, &v1.DeleteOptions{})
-	if err != nil {
-		logrus.Error("Could not delete service "+kongProxyServiceName+":", err)
+	return err
+}
+
+// CreateKongDeployment creates the kong deployment
+func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error {
+
+	// Check if deployment exists
+	deployment, err := k.Kclient.Deployments(namespace).Get(kongDeploymentName)
+
+	if len(deployment.Name) == 0 {
+		logrus.Infof("%s not found, creating...", kongDeploymentName)
+
+		deployment := &v1beta1.Deployment{
+			ObjectMeta: v1.ObjectMeta{
+				Name: kongDeploymentName,
+				Labels: map[string]string{
+					"name": kongDeploymentName,
+				},
+			},
+			Spec: v1beta1.DeploymentSpec{
+				Replicas: replicas,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: v1.ObjectMeta{
+						Labels: map[string]string{
+							"app":  "kong",
+							"name": kongDeploymentName,
+						},
+					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							v1.Container{
+								Name:            kongDeploymentName,
+								Image:           baseImage,
+								ImagePullPolicy: "Always",
+								Env: []v1.EnvVar{
+									v1.EnvVar{
+										Name: "NAMESPACE",
+										ValueFrom: &v1.EnvVarSource{
+											FieldRef: &v1.ObjectFieldSelector{
+												FieldPath: "metadata.namespace",
+											},
+										},
+									},
+									v1.EnvVar{
+										Name:  "KONG_PG_USER",
+										Value: "kong",
+									},
+									v1.EnvVar{
+										Name:  "KONG_PG_PASSWORD",
+										Value: "kong",
+									},
+									v1.EnvVar{
+										Name:  "KONG_PG_HOST",
+										Value: fmt.Sprintf("postgres.%s.svc.cluster.local", namespace),
+									},
+									v1.EnvVar{
+										Name:  "KONG_PG_DATABASE",
+										Value: "kong",
+									},
+									v1.EnvVar{
+										Name:  "KONG_ADMIN_LISTEN",
+										Value: "127.0.0.1:8001",
+									},
+								},
+								Ports: []v1.ContainerPort{
+									v1.ContainerPort{
+										Name:          "admin",
+										ContainerPort: 8444,
+										Protocol:      v1.ProtocolTCP,
+									},
+									v1.ContainerPort{
+										Name:          "proxy",
+										ContainerPort: 8000,
+										Protocol:      v1.ProtocolTCP,
+									},
+									v1.ContainerPort{
+										Name:          "proxy-ssl",
+										ContainerPort: 8443,
+										Protocol:      v1.ProtocolTCP,
+									},
+									v1.ContainerPort{
+										Name:          "surf-tcp",
+										ContainerPort: 7946,
+										Protocol:      v1.ProtocolTCP,
+									},
+									v1.ContainerPort{
+										Name:          "surf-udp",
+										ContainerPort: 7946,
+										Protocol:      v1.ProtocolTCP,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := k.Kclient.Deployments(namespace).Create(deployment)
+
+		if err != nil {
+			logrus.Error("Could not create kong deployment: ", err)
+			return err
+		}
 	} else {
-		logrus.Infof("Delete service: %s", kongProxyServiceName)
+		if err != nil {
+			logrus.Error("Could not get kong deployment! ", err)
+			return err
+		}
+
+		//scale replicas?
+		if deployment.Spec.Replicas != replicas {
+			deployment.Spec.Replicas = replicas
+
+			_, err := k.Kclient.Deployments(namespace).Update(deployment)
+
+			if err != nil {
+				logrus.Error("Could not scale deployment: ", err)
+			}
+		}
 	}
+
+	return nil
+}
+
+// DeleteKongDeployment deletes kong deployment
+func (k *K8sutil) DeleteKongDeployment() error {
+
+	// Get list of deployments
+	deployment, err := k.Kclient.Deployments(namespace).Get(kongDeploymentName)
+
+	if err != nil {
+		logrus.Error("Could not get deployments! ", err)
+		return err
+	}
+
+	//Scale the deployment down to zero (https://github.com/kubernetes/client-go/issues/91)
+	deployment.Spec.Replicas = new(int32)
+	_, err = k.Kclient.Deployments(namespace).Update(deployment)
+
+	if err != nil {
+		logrus.Errorf("Could not scale deployment: %s ", deployment.Name)
+	} else {
+		logrus.Infof("Scaled deployment: %s to zero", deployment.Name)
+	}
+
+	err = k.Kclient.Deployments(namespace).Delete(deployment.Name, &v1.DeleteOptions{})
+
+	if err != nil {
+		logrus.Errorf("Could not delete deployments: %s ", deployment.Name)
+	} else {
+		logrus.Infof("Deleted deployment: %s", deployment.Name)
+	}
+
+	// Get list of ReplicaSets
+	replicaSet, err := k.Kclient.ReplicaSets(namespace).Get(kongDeploymentName)
+
+	if err != nil {
+		logrus.Error("Could not get replica sets! ", err)
+	}
+
+	err = k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
+
+	if err != nil {
+		logrus.Errorf("Could not delete replica set: %s ", replicaSet.Name)
+	} else {
+		logrus.Infof("Deleted replica set: %s", replicaSet.Name)
+	}
+
+	return nil
 }
