@@ -5,7 +5,16 @@
     "name": "example-kong-cluster"
   },
   "spec": {
-      "replicas": 1,
-      "useSamplePostgres": true
+    "name": "example-kong-cluster",
+    "replicas": 1,
+    "useSamplePostgres": true,
+    "apis": [{
+      "name": "go-microservice",
+      "upstream_url": "http://go-microservice.default.svc.cluster.local:8080",
+      "hosts": [
+        "service-go.apps.arch.upmce.net"
+      ]
+    }]
+
   }
 }

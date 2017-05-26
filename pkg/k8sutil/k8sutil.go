@@ -25,17 +25,16 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package k8sutil
 
 import (
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/upmc-enterprises/kong-operator/pkg/tpr"
 
 	k8serrors "k8s.io/client-go/pkg/api/errors"
 	"k8s.io/client-go/pkg/fields"
 	"k8s.io/client-go/pkg/util/intstr"
 
-	myspec "github.com/upmc-enterprises/kong-operator/pkg/spec"
 	"k8s.io/client-go/kubernetes"
 	coreType "k8s.io/client-go/kubernetes/typed/core/v1"
 	extensionsType "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
@@ -56,9 +55,10 @@ var (
 )
 
 const (
-	kongProxyServiceName = "kong-proxy"
-	kongAdminServiceName = "kong-admin"
-	kongDeploymentName   = "kong"
+	kongProxyServiceName   = "kong-proxy"
+	kongAdminServiceName   = "kong-admin"
+	kongDeploymentName     = "kong"
+	kongPostgresSecretName = "kong-postgres"
 )
 
 // KubeInterface abstracts the kubernetes client
@@ -67,6 +67,7 @@ type KubeInterface interface {
 	ThirdPartyResources() extensionsType.ThirdPartyResourceInterface
 	Deployments(namespace string) extensionsType.DeploymentInterface
 	ReplicaSets(namespace string) extensionsType.ReplicaSetInterface
+	Secrets(namespace string) coreType.SecretInterface
 }
 
 // K8sutil defines the kube object
@@ -120,8 +121,8 @@ func configureTPRClient(config *rest.Config) {
 		func(scheme *runtime.Scheme) error {
 			scheme.AddKnownTypes(
 				unversioned.GroupVersion{Group: "enterprises.upmc.com", Version: "v1"},
-				&myspec.KongCluster{},
-				&myspec.KongClusterList{},
+				&tpr.KongCluster{},
+				&tpr.KongClusterList{},
 				&api.ListOptions{},
 				&api.DeleteOptions{},
 			)
@@ -192,8 +193,8 @@ func (k *K8sutil) CreateKubernetesThirdPartyResource() error {
 }
 
 // GetKongClusters returns a list of custom clusters defined
-func (k *K8sutil) GetKongClusters() ([]myspec.KongCluster, error) {
-	kongList := myspec.KongClusterList{}
+func (k *K8sutil) GetKongClusters() ([]tpr.KongCluster, error) {
+	kongList := tpr.KongClusterList{}
 	var err error
 
 	for {
@@ -212,37 +213,37 @@ func (k *K8sutil) GetKongClusters() ([]myspec.KongCluster, error) {
 }
 
 // MonitorKongEvents watches for new or removed clusters
-func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *myspec.KongCluster, <-chan error) {
+func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *tpr.KongCluster, <-chan error) {
 	// Validate Namespace exists
 	if len(namespace) == 0 {
 		logrus.Errorln("WARNING: No namespace found! Events will not be able to be watched!")
 	}
 
-	events := make(chan *myspec.KongCluster)
+	events := make(chan *tpr.KongCluster)
 	errc := make(chan error, 1)
 
 	source := cache.NewListWatchFromClient(k.TprClient, "kongclusters", api.NamespaceAll, fields.Everything())
 
 	createAddHandler := func(obj interface{}) {
-		event := obj.(*myspec.KongCluster)
+		event := obj.(*tpr.KongCluster)
 		event.Type = "ADDED"
 		events <- event
 	}
 	createDeleteHandler := func(obj interface{}) {
-		event := obj.(*myspec.KongCluster)
+		event := obj.(*tpr.KongCluster)
 		event.Type = "DELETED"
 		events <- event
 	}
 
 	updateHandler := func(old interface{}, obj interface{}) {
-		event := obj.(*myspec.KongCluster)
+		event := obj.(*tpr.KongCluster)
 		event.Type = "MODIFIED"
 		events <- event
 	}
 
 	_, controller := cache.NewInformer(
 		source,
-		&myspec.KongCluster{},
+		&tpr.KongCluster{},
 		time.Minute*60,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    createAddHandler,
@@ -339,6 +340,12 @@ func (k *K8sutil) CreateKongAdminService() error {
 						TargetPort: intstr.FromInt(8444),
 						Protocol:   "TCP",
 					},
+					v1.ServicePort{
+						Name:       "kong-admin-insecure",
+						Port:       8001,
+						TargetPort: intstr.FromInt(8001),
+						Protocol:   "TCP",
+					},
 				},
 				Type: v1.ServiceTypeClusterIP,
 			},
@@ -423,30 +430,64 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 										},
 									},
 									v1.EnvVar{
-										Name:  "KONG_PG_USER",
-										Value: "kong",
+										Name: "KONG_PG_USER",
+										ValueFrom: &v1.EnvVarSource{
+
+											SecretKeyRef: &v1.SecretKeySelector{
+												Key: "KONG_PG_USER",
+												LocalObjectReference: v1.LocalObjectReference{
+													Name: kongPostgresSecretName,
+												},
+											},
+										},
 									},
 									v1.EnvVar{
-										Name:  "KONG_PG_PASSWORD",
-										Value: "kong",
+										Name: "KONG_PG_PASSWORD",
+										ValueFrom: &v1.EnvVarSource{
+											SecretKeyRef: &v1.SecretKeySelector{
+												Key: "KONG_PG_PASSWORD",
+												LocalObjectReference: v1.LocalObjectReference{
+													Name: kongPostgresSecretName,
+												},
+											},
+										},
 									},
 									v1.EnvVar{
-										Name:  "KONG_PG_HOST",
-										Value: fmt.Sprintf("postgres.%s.svc.cluster.local", namespace),
+										Name: "KONG_PG_HOST",
+										ValueFrom: &v1.EnvVarSource{
+											SecretKeyRef: &v1.SecretKeySelector{
+												Key: "KONG_PG_HOST",
+												LocalObjectReference: v1.LocalObjectReference{
+													Name: kongPostgresSecretName,
+												},
+											},
+										},
 									},
 									v1.EnvVar{
-										Name:  "KONG_PG_DATABASE",
-										Value: "kong",
+										Name: "KONG_PG_DATABASE",
+										ValueFrom: &v1.EnvVarSource{
+											SecretKeyRef: &v1.SecretKeySelector{
+												Key: "KONG_PG_DATABASE",
+												LocalObjectReference: v1.LocalObjectReference{
+													Name: kongPostgresSecretName,
+												},
+											},
+										},
 									},
-									v1.EnvVar{
-										Name:  "KONG_ADMIN_LISTEN",
-										Value: "127.0.0.1:8001",
-									},
+									// v1.EnvVar{
+									// 	Name:  "KONG_ADMIN_LISTEN",
+									// 	Value: "127.0.0.1:8001",
+									// },
 								},
 								Ports: []v1.ContainerPort{
 									v1.ContainerPort{
 										Name:          "admin",
 										ContainerPort: 8444,
+										Protocol:      v1.ProtocolTCP,
+									},
+									v1.ContainerPort{
+										Name:          "admin-insecure",
+										ContainerPort: 8001,
 										Protocol:      v1.ProtocolTCP,
 									},
 									v1.ContainerPort{
@@ -533,19 +574,24 @@ func (k *K8sutil) DeleteKongDeployment() error {
 		logrus.Infof("Deleted deployment: %s", deployment.Name)
 	}
 
+	// ZZzzzzz...zzzzZZZzzz
+	time.Sleep(2 * time.Second)
+
 	// Get list of ReplicaSets
-	replicaSet, err := k.Kclient.ReplicaSets(namespace).Get(kongDeploymentName)
+	replicaSets, err := k.Kclient.ReplicaSets(namespace).List(v1.ListOptions{LabelSelector: "app=kong,name=kong"})
 
 	if err != nil {
 		logrus.Error("Could not get replica sets! ", err)
 	}
 
-	err = k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
+	for _, replicaSet := range replicaSets.Items {
+		err := k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
 
-	if err != nil {
-		logrus.Errorf("Could not delete replica set: %s ", replicaSet.Name)
-	} else {
-		logrus.Infof("Deleted replica set: %s", replicaSet.Name)
+		if err != nil {
+			logrus.Errorf("Could not delete replica sets: %s ", replicaSet.Name)
+		} else {
+			logrus.Infof("Deleted replica set: %s", replicaSet.Name)
+		}
 	}
 
 	return nil

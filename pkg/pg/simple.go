@@ -25,6 +25,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package pg
 
 import (
+	"fmt"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
 	"k8s.io/client-go/pkg/api/v1"
@@ -47,7 +49,8 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 			ObjectMeta: v1.ObjectMeta{
 				Name: "postgres",
 				Labels: map[string]string{
-					"app": "postgres",
+					"name": "postgres",
+					"app":  "kong",
 				},
 			},
 			Spec: v1beta1.DeploymentSpec{
@@ -55,7 +58,8 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: v1.ObjectMeta{
 						Labels: map[string]string{
-							"app": "postgres",
+							"name": "postgres",
+							"app":  "kong",
 						},
 					},
 					Spec: v1.PodSpec{
@@ -139,11 +143,13 @@ func SimplePostgresService(k *k8sutil.K8sutil, namespace string) error {
 				Name: "postgres",
 				Labels: map[string]string{
 					"name": "postgres",
+					"app":  "kong",
 				},
 			},
 			Spec: v1.ServiceSpec{
 				Selector: map[string]string{
-					"app": "postgres",
+					"name": "postgres",
+					"app":  "kong",
 				},
 				Ports: []v1.ServicePort{
 					v1.ServicePort{
@@ -171,19 +177,42 @@ func SimplePostgresService(k *k8sutil.K8sutil, namespace string) error {
 	return nil
 }
 
+// SimplePostgresSecret creates the postgres secrets
+func SimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
+
+	secret := &v1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name: "kong-postgres",
+		},
+		Data: map[string][]byte{
+			"KONG_PG_USER":     []byte("kong"),
+			"KONG_PG_PASSWORD": []byte("kong"),
+			"KONG_PG_HOST":     []byte(fmt.Sprintf("postgres.%s.svc.cluster.local", namespace)),
+			"KONG_PG_DATABASE": []byte("kong"),
+		},
+	}
+
+	_, err := k.Kclient.Secrets(namespace).Create(secret)
+
+	if err != nil {
+		logrus.Error("Could not create postgres secret: ", err)
+		return err
+	}
+
+	return nil
+}
+
+// // DeleteSimplePostgresSecret deletes simple secret
+// func DeleteSimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
+
+// }
+
 // DeleteSimplePostgres cleans up deployment / service for postgres db
 func DeleteSimplePostgres(k *k8sutil.K8sutil, namespace string) {
 
 	err := k.Kclient.Services(namespace).Delete("postgres", &v1.DeleteOptions{})
 	if err != nil {
-		logrus.Error("Could not delete service postgres:", err)
-	} else {
-		logrus.Infof("Delete service: %s", "postgres")
-	}
-
-	err = k.Kclient.Services(namespace).Delete("postgres", &v1.DeleteOptions{})
-	if err != nil {
-		logrus.Error("Could not delete service postgres:", err)
+		logrus.Error("Could not delete service postgres: ", err)
 	} else {
 		logrus.Infof("Delete service: %s", "postgres")
 	}
@@ -214,17 +243,19 @@ func DeleteSimplePostgres(k *k8sutil.K8sutil, namespace string) {
 	}
 
 	// Get list of ReplicaSets
-	replicaSet, err := k.Kclient.ReplicaSets(namespace).Get("postgres")
+	replicaSets, err := k.Kclient.ReplicaSets(namespace).List(v1.ListOptions{LabelSelector: "app=kong,name=postgres"})
 
 	if err != nil {
 		logrus.Error("Could not get replica sets! ", err)
 	}
 
-	err = k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
+	for _, replicaSet := range replicaSets.Items {
+		err := k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
 
-	if err != nil {
-		logrus.Errorf("Could not delete replica set: %s ", replicaSet.Name)
-	} else {
-		logrus.Infof("Deleted replica set: %s", replicaSet.Name)
+		if err != nil {
+			logrus.Errorf("Could not delete replica sets: %s ", replicaSet.Name)
+		} else {
+			logrus.Infof("Deleted replica set: %s", replicaSet.Name)
+		}
 	}
 }

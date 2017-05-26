@@ -30,8 +30,9 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
+	"github.com/upmc-enterprises/kong-operator/pkg/kong"
 	"github.com/upmc-enterprises/kong-operator/pkg/pg"
-	myspec "github.com/upmc-enterprises/kong-operator/pkg/spec"
+	"github.com/upmc-enterprises/kong-operator/pkg/tpr"
 )
 
 // processorLock ensures that reconciliation and event processing does
@@ -45,15 +46,19 @@ var (
 type Processor struct {
 	k8sclient *k8sutil.K8sutil
 	baseImage string
-	clusters  map[string]*myspec.KongCluster
+	clusters  map[string]*tpr.KongCluster
+	kong      *kong.Kong
 }
 
 // New creates new instance of Processor
 func New(kclient *k8sutil.K8sutil, baseImage string) (*Processor, error) {
+	kong, _ := kong.New()
+
 	p := &Processor{
 		k8sclient: kclient,
 		baseImage: baseImage,
-		clusters:  make(map[string]*myspec.KongCluster),
+		clusters:  make(map[string]*tpr.KongCluster),
+		kong:      kong,
 	}
 
 	return p, nil
@@ -93,7 +98,7 @@ func (p *Processor) WatchKongEvents(done chan struct{}, wg *sync.WaitGroup) {
 func (p *Processor) refreshClusters() error {
 
 	//Reset
-	p.clusters = make(map[string]*myspec.KongCluster)
+	p.clusters = make(map[string]*tpr.KongCluster)
 
 	// Get existing clusters
 	currentClusters, err := p.k8sclient.GetKongClusters()
@@ -104,13 +109,15 @@ func (p *Processor) refreshClusters() error {
 	}
 
 	for _, cluster := range currentClusters {
-		logrus.Infof("Found cluster: %s", cluster.Metadata.Name)
+		logrus.Infof("Found cluster: %s", cluster.Spec.Name)
 
-		p.clusters[cluster.Metadata.Name] = &myspec.KongCluster{
-			Spec: myspec.ClusterSpec{
+		p.clusters[cluster.Spec.Name] = &tpr.KongCluster{
+			Spec: tpr.ClusterSpec{
+				Name:              cluster.Spec.Name,
 				Replicas:          cluster.Spec.Replicas,
 				BaseImage:         cluster.Spec.BaseImage,
 				UseSamplePostgres: cluster.Spec.UseSamplePostgres,
+				Apis:              cluster.Spec.Apis,
 			},
 		}
 	}
@@ -118,29 +125,68 @@ func (p *Processor) refreshClusters() error {
 	return nil
 }
 
-func (p *Processor) processKongEvent(c *myspec.KongCluster) error {
+func (p *Processor) processKongEvent(c *tpr.KongCluster) error {
 	processorLock.Lock()
 	defer processorLock.Unlock()
 
 	switch {
-	case c.Type == "ADDED" || c.Type == "MODIFIED":
-		return p.processKong(c)
+	case c.Type == "ADDED":
+		return p.createKong(c)
+	case c.Type == "MODIFIED":
+		return p.modifyKong(c)
 	case c.Type == "DELETED":
 		return p.deleteKong(c)
 	}
 	return nil
 }
 
-func (p *Processor) processKong(c *myspec.KongCluster) error {
-	logrus.Println("--------> Kong Event!")
+func (p *Processor) modifyKong(c *tpr.KongCluster) error {
+	logrus.Println("--------> Update Kong Event!")
+
+	// Get current APIs from Kong
+	apis := p.kong.GetAPIs()
+
+	logrus.Infof("Found %d apis existing in kong api...", apis.Total)
+
+	// process apis
+	for _, api := range c.Spec.Apis {
+
+		found, position := kong.FindAPI(api.Name, apis.Data)
+
+		if found {
+			logrus.Infof("Existing API [%s] found, updating...", apis.Data[position].Name)
+			p.kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
+
+			// Clean up local list
+			apis.Data = kong.Remove(apis.Data, position)
+		} else {
+			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
+			p.kong.CreateAPI(api.Name, api.UpstreamURL, api.Hosts)
+		}
+	}
+
+	// Delete existing apis left
+	for _, api := range apis.Data {
+		logrus.Infof("Deleting api: %s", api.Name)
+		p.kong.DeleteAPI(api.Name)
+	}
+
+	return nil
+}
+
+func (p *Processor) createKong(c *tpr.KongCluster) error {
+	logrus.Println("--------> Create Kong Event!")
 
 	// Refresh
 	p.refreshClusters()
+
+	logrus.Info("--------- usesamplepostgres: ", c.Spec.UseSamplePostgres)
 
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
 		pg.SimplePostgresService(p.k8sclient, namespace)
 		pg.SimplePostgresDeployment(p.k8sclient, namespace)
+		pg.SimplePostgresSecret(p.k8sclient, namespace)
 	} else {
 		pg.DeleteSimplePostgres(p.k8sclient, namespace)
 	}
@@ -157,10 +203,31 @@ func (p *Processor) processKong(c *myspec.KongCluster) error {
 	// Create deployment
 	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas)
 
+	// Wait for kong to be ready
+	timeout := make(chan bool, 1)
+	ready := make(chan bool)
+
+	logrus.Info("Waiting for Kong API to become ready....")
+	go p.kong.Ready(timeout, ready)
+
+	select {
+	case <-ready:
+		// process apis
+		for _, api := range c.Spec.Apis {
+			logrus.Info("Processing API: ", api.Name)
+			p.kong.CreateAPI(api.Name, api.UpstreamURL, api.Hosts)
+		}
+
+		// process plugins
+	case <-timeout:
+		// the read from ready has timed out
+		logrus.Error("Giving up waiting for kong-api to become ready...")
+	}
+
 	return nil
 }
 
-func (p *Processor) deleteKong(c *myspec.KongCluster) error {
+func (p *Processor) deleteKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Kong Cluster deleted...removing all components...")
 
 	err := p.k8sclient.DeleteKongDeployment()
