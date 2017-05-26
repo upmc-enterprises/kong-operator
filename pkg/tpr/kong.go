@@ -43,17 +43,6 @@ type KongCluster struct {
 	Spec       ClusterSpec `json:"spec"`
 }
 
-// KongClusterTPR defines the cluster
-type KongClusterTPR struct {
-	unversioned.TypeMeta `json:",inline"`
-	Metadata             api.ObjectMeta `json:"metadata"`
-
-	APIVersion string         `json:"apiVersion"`
-	Type       string         `json:"type"`
-	Kind       string         `json:"kind"`
-	Spec       ClusterSpecTPR `json:"spec"`
-}
-
 // ClusterSpec defines cluster options
 type ClusterSpec struct {
 	// Name is the cluster name
@@ -69,25 +58,7 @@ type ClusterSpec struct {
 	UseSamplePostgres bool `json:"useSamplePostgres"`
 
 	// Apis defines list of api's to configure in kong
-	Apis map[string]*API `json:"apis"`
-}
-
-// ClusterSpecTPR defines cluster options from TPR
-type ClusterSpecTPR struct {
-	// Name is the cluster name
-	Name string `json:"name"`
-
-	// Replicas allows user to override the base image
-	Replicas int32 `json:"replicas"`
-
-	// BaseImage allows user to override the base image
-	BaseImage string `json:"base-image"`
-
-	// UseSamplePostgres defines if sample postgres db should be deployed
-	UseSamplePostgres bool `json:"useSamplePostgres"`
-
-	// Apis defines list of api's to configure in kong
-	Apis []*API `json:"apis"`
+	Apis []API `json:"apis"`
 }
 
 // API defines a kong api
@@ -112,32 +83,15 @@ func (e *KongCluster) GetObjectMeta() meta.Object {
 	return &e.Metadata
 }
 
+type KongClusterCopy KongCluster
+
 func (e *KongCluster) UnmarshalJSON(data []byte) error {
-	// *f = make(map[string]*foo) // required since map is not initialized
-	tmp := KongClusterTPR{}
+	tmp := KongClusterCopy{}
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
 
-	tmp2 := KongCluster{
-		APIVersion: tmp.APIVersion,
-		Kind:       tmp.Kind,
-		Metadata:   tmp.Metadata,
-		Type:       tmp.Type,
-		TypeMeta:   tmp.TypeMeta,
-		Spec: ClusterSpec{
-			Name:              tmp.Spec.Name,
-			Replicas:          tmp.Spec.Replicas,
-			BaseImage:         tmp.Spec.BaseImage,
-			UseSamplePostgres: tmp.Spec.UseSamplePostgres,
-		},
-	}
-
-	tmp2.Spec.Apis = make(map[string]*API)
-	for i := 0; i < len(tmp.Spec.Apis); i++ {
-		tprAPI := tmp.Spec.Apis[i]
-		tmp2.Spec.Apis[tprAPI.Name] = tprAPI
-	}
+	tmp2 := KongCluster(tmp)
 
 	*e = tmp2
 
