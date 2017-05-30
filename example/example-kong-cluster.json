@@ -23,6 +23,10 @@
       "apis": [
         "go-microservice"
       ]
+    }],
+    "consumers": [{
+      "username": "slokas",
+      "custom_id": "ABC123"
     }]
   }
 }

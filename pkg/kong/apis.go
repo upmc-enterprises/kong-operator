@@ -24,7 +24,17 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 
 package kong
 
-import "time"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Sirupsen/logrus"
+)
 
 // APIS represents a result from GET /apis
 type APIS struct {
@@ -54,6 +64,134 @@ type API struct {
 	Name     string `json:"name"`
 	Upstream string `json:"upstream_url"`
 	Hosts    string `json:"hosts"`
+}
+
+// GetAPIs creates a new Kong api
+func (k *Kong) GetAPIs() APIS {
+	var apis APIS
+
+	// Setup URL
+	url := fmt.Sprintf("%s/apis/", kongAdminService)
+
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could not get kong apis: ", err)
+		return apis
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Create api returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return apis
+	}
+
+	json.NewDecoder(resp.Body).Decode(&apis)
+
+	return apis
+}
+
+// CreateAPI creates a new Kong api
+func (k *Kong) CreateAPI(api Data) error {
+	// Create the api object
+	createAPI := &API{Name: api.Name, Upstream: api.UpstreamURL, Hosts: strings.Join(api.Hosts, ",")}
+
+	// Create JSON
+	buf := new(bytes.Buffer)
+	json.NewEncoder(buf).Encode(createAPI)
+
+	// Setup URL
+	url := fmt.Sprintf("%s/apis/", kongAdminService)
+
+	resp, err := k.client.Post(url, "application/json", buf)
+
+	if err != nil {
+		logrus.Error("Could not create kong api: ", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 201 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Create api returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Create api returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Created api: %s", api.Name)
+
+	return nil
+}
+
+// UpdateAPI creates a new Kong api
+func (k *Kong) UpdateAPI(name, upstream string, hosts []string) error {
+	// Create the api object
+	updateAPI := &API{Name: name, Upstream: upstream, Hosts: strings.Join(hosts, ",")}
+
+	// Create JSON
+	buf := new(bytes.Buffer)
+	json.NewEncoder(buf).Encode(updateAPI)
+
+	// Setup URL
+	url := fmt.Sprintf("%s/apis/%s", kongAdminService, name)
+
+	req, err := http.NewRequest("PATCH", url, buf)
+	if err != nil {
+		logrus.Error("Could not update api: ", err)
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := k.client.Do(req)
+
+	if err != nil {
+		logrus.Error("Could not update kong api: ", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Update api returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Update api returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Update api: %s", name)
+
+	return nil
+}
+
+// DeleteAPI creates a new Kong api
+func (k *Kong) DeleteAPI(name string) error {
+	// Setup URL
+	url := fmt.Sprintf("%s/apis/%s", kongAdminService, name)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		logrus.Error("Could not create delete request: ", err)
+		return err
+	}
+
+	resp, err := k.client.Do(req)
+	if err != nil {
+		logrus.Error("Could not delete kong api: ", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Delete api returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Delete api returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Deleted api: %s", name)
+
+	return nil
 }
 
 // FindAPI finds item in existing apis

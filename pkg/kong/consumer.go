@@ -25,50 +25,45 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package kong
 
 import (
-	"crypto/tls"
-	"net/http"
-	"time"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 
 	"github.com/Sirupsen/logrus"
 )
 
-const (
-	// kongAdminService = "https://kong-admin:8444"
-	kongAdminService = "http://localhost:9005"
-)
-
-// Kong struct
-type Kong struct {
-	client *http.Client
+// Consumer represents a user of the API
+type Consumer struct {
+	Username string `json:"username"`
+	CustomID string `json:"custom_id"`
 }
 
-// New creates an instance of Kong
-func New() (*Kong, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr, Timeout: time.Second * 10}
+// CreateConsumer creates a consumer
+func (k *Kong) CreateConsumer(consumer Consumer) error {
+	// Create JSON
+	buf := new(bytes.Buffer)
+	json.NewEncoder(buf).Encode(consumer)
 
-	k := &Kong{
-		client: client,
-	}
-	return k, nil
-}
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/", kongAdminService)
 
-// Ready creates a new Kong api
-func (k *Kong) Ready(timeout chan bool, ready chan bool) {
-	for i := 0; i < 10; i++ {
-		resp, err := k.client.Get(kongAdminService)
-		if err != nil {
-			logrus.Error("Error getting kong admin status: ", err)
-		} else {
-			if resp.StatusCode == 200 {
-				logrus.Info("Kong API is ready!")
-				ready <- true
-				return
-			}
-		}
-		time.Sleep(2 * time.Second)
+	resp, err := k.client.Post(url, "application/json", buf)
+
+	if err != nil {
+		logrus.Error("Could not create consumer: ", err)
+		return err
 	}
-	timeout <- true
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 201 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Create consumer returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Create consumer returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Created consumer: %s", consumer.Username)
+
+	return nil
 }

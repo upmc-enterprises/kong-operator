@@ -164,6 +164,11 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 			p.kong.CreateAPI(api)
 		}
 
+		for _, consumer := range c.Spec.Consumers {
+			logrus.Info("Processing consumer: ", consumer.Username)
+			p.kong.CreateConsumer(consumer)
+		}
+
 		for _, plugin := range c.Spec.Plugins {
 			logrus.Info("Processing plugin: ", plugin.Name)
 			p.kong.EnablePlugin(plugin)
