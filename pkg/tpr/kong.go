@@ -27,6 +27,8 @@ package tpr
 import (
 	"encoding/json"
 
+	"github.com/upmc-enterprises/kong-operator/pkg/kong"
+
 	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/pkg/api/meta"
 	"k8s.io/client-go/pkg/api/unversioned"
@@ -58,33 +60,25 @@ type ClusterSpec struct {
 	UseSamplePostgres bool `json:"useSamplePostgres"`
 
 	// Apis defines list of api's to configure in kong
-	Apis []API `json:"apis"`
+	Apis []kong.Data `json:"apis"`
+
+	// Plugins defines the list of plugins to enable
+	Plugins []kong.Plugin `json:"plugins"`
 }
 
-// API defines a kong api
-type API struct {
-	// Name defines api name
-	Name string `json:"name"`
-
-	// Hosts defines lists of kong hosts
-	Hosts []string `json:"hosts"`
-
-	// UpstreamURL defines api upstream url
-	UpstreamURL string `json:"upstream_url"`
-}
-
-// Required to satisfy Object interface
+// GetObjectKind required to satisfy Object interface
 func (e *KongCluster) GetObjectKind() unversioned.ObjectKind {
 	return &e.TypeMeta
 }
 
-// Required to satisfy ObjectMetaAccessor interface
+// GetObjectMeta required to satisfy ObjectMetaAccessor interface
 func (e *KongCluster) GetObjectMeta() meta.Object {
 	return &e.Metadata
 }
 
 type KongClusterCopy KongCluster
 
+// UnmarshalJSON unmarshals json
 func (e *KongCluster) UnmarshalJSON(data []byte) error {
 	tmp := KongClusterCopy{}
 	if err := json.Unmarshal(data, &tmp); err != nil {

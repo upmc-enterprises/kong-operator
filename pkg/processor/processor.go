@@ -161,7 +161,12 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 			apis.Data = kong.Remove(apis.Data, position)
 		} else {
 			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
-			p.kong.CreateAPI(api.Name, api.UpstreamURL, api.Hosts)
+			p.kong.CreateAPI(api)
+		}
+
+		for _, plugin := range c.Spec.Plugins {
+			logrus.Info("Processing plugin: ", plugin.Name)
+			p.kong.EnablePlugin(plugin)
 		}
 	}
 
@@ -179,8 +184,6 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 
 	// Refresh
 	p.refreshClusters()
-
-	logrus.Info("--------- usesamplepostgres: ", c.Spec.UseSamplePostgres)
 
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
@@ -215,7 +218,13 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 		// process apis
 		for _, api := range c.Spec.Apis {
 			logrus.Info("Processing API: ", api.Name)
-			p.kong.CreateAPI(api.Name, api.UpstreamURL, api.Hosts)
+			p.kong.CreateAPI(api)
+		}
+
+		// process plugins
+		for _, plugin := range c.Spec.Plugins {
+			logrus.Info("Processing plugin: ", plugin.Name)
+			logrus.Info("----> config: ", plugin.Config)
 		}
 
 		// process plugins

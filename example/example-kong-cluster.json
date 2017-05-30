@@ -14,7 +14,15 @@
       "hosts": [
         "service-go.apps.arch.upmce.net"
       ]
+    }],
+    "plugins": [{
+      "name": "key-auth",
+      "config": {
+        "hide_credentials": "true"
+      },
+      "apis": [
+        "go-microservice"
+      ]
     }]
-
   }
 }

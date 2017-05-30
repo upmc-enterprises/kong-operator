@@ -88,9 +88,9 @@ func (k *Kong) GetAPIs() APIS {
 }
 
 // CreateAPI creates a new Kong api
-func (k *Kong) CreateAPI(name, upstream string, hosts []string) error {
+func (k *Kong) CreateAPI(api Data) error {
 	// Create the api object
-	createAPI := &API{Name: name, Upstream: upstream, Hosts: strings.Join(hosts, ",")}
+	createAPI := &API{Name: api.Name, Upstream: api.UpstreamURL, Hosts: strings.Join(api.Hosts, ",")}
 
 	// Create JSON
 	buf := new(bytes.Buffer)
@@ -114,7 +114,7 @@ func (k *Kong) CreateAPI(name, upstream string, hosts []string) error {
 		return fmt.Errorf("Create api returned: %d", resp.StatusCode)
 	}
 
-	logrus.Infof("Created api: %s", name)
+	logrus.Infof("Created api: %s", api.Name)
 
 	return nil
 }
