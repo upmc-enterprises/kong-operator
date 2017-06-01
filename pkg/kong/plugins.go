@@ -32,6 +32,8 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
+var authPlugins = []string{"basic-auth", "key-auth", "jwt", "oauth2", "hmac-auth", "ldap-auth"}
+
 // Plugin identifies a kong plugin
 type Plugin struct {
 	// Name of the plugin
@@ -42,6 +44,9 @@ type Plugin struct {
 
 	// Apis to apply the plugin
 	Apis []string `json:"apis"`
+
+	// Consumers define what users can access the API
+	Consumers []Consumer `json:"consumers"`
 }
 
 func buildJSON(plugin Plugin) string {
@@ -55,17 +60,15 @@ func buildJSON(plugin Plugin) string {
 }
 
 // EnablePlugin enables a plugin
-func (k *Kong) EnablePlugin(plugin Plugin) {
+func (k *Kong) EnablePlugin(plugin Plugin, consumers []ConsumerTPR) {
 	// Create the api object
 	createPluginJSON := []byte(buildJSON(plugin))
 
+	// --- Step1: Enable plugin
 	for _, api := range plugin.Apis {
 
 		// Setup URL
 		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
-
-		logrus.Info("------- url: ", url)
-
 		resp, err := k.client.Post(url, "application/json", bytes.NewBuffer(createPluginJSON))
 
 		if err != nil {
@@ -80,7 +83,6 @@ func (k *Kong) EnablePlugin(plugin Plugin) {
 			logrus.Errorf("Enable plugin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
 			continue
 		}
-
 		logrus.Infof("Enabled plugin: %s", plugin.Name)
 	}
 }

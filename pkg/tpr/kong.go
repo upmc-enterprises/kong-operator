@@ -66,7 +66,7 @@ type ClusterSpec struct {
 	Plugins []kong.Plugin `json:"plugins"`
 
 	// Consumers define the users
-	Consumers []kong.Consumer `json:"consumers"`
+	Consumers []kong.ConsumerTPR `json:"consumers"`
 }
 
 // GetObjectKind required to satisfy Object interface

@@ -22,53 +22,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 */
 
-package kong
+package util
 
-import (
-	"crypto/tls"
-	"net/http"
-	"time"
-
-	"github.com/Sirupsen/logrus"
-)
-
-const (
-	kongAdminService = "http://kong-admin.operator.svc.cluster.local:8001"
-	// kongAdminService = "http://localhost:9005"
-)
-
-// Kong struct
-type Kong struct {
-	client *http.Client
-}
-
-// New creates an instance of Kong
-func New() (*Kong, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr, Timeout: time.Second * 10}
-
-	k := &Kong{
-		client: client,
-	}
-	return k, nil
-}
-
-// Ready creates a new Kong api
-func (k *Kong) Ready(timeout chan bool, ready chan bool) {
-	for i := 0; i < 20; i++ {
-		resp, err := k.client.Get(kongAdminService)
-		if err != nil {
-			logrus.Error("Error getting kong admin status: ", err)
-		} else {
-			if resp.StatusCode == 200 {
-				logrus.Info("Kong API is ready!")
-				ready <- true
-				return
-			}
+// StringContains looks for a string contained in a string array
+func StringContains(item string, list []string) bool {
+	for _, a := range list {
+		if a == item {
+			return true
 		}
-		time.Sleep(2 * time.Second)
 	}
-	timeout <- true
+	return false
 }

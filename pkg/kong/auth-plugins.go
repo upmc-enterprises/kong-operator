@@ -24,51 +24,34 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 
 package kong
 
-import (
-	"crypto/tls"
-	"net/http"
-	"time"
-
-	"github.com/Sirupsen/logrus"
-)
-
-const (
-	kongAdminService = "http://kong-admin.operator.svc.cluster.local:8001"
-	// kongAdminService = "http://localhost:9005"
-)
-
-// Kong struct
-type Kong struct {
-	client *http.Client
+// JWTCreds represents jwt plugin response
+type JWTCreds struct {
+	Data  []JWTCred `json:"data"`
+	Total int       `json:"total"`
 }
 
-// New creates an instance of Kong
-func New() (*Kong, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr, Timeout: time.Second * 10}
-
-	k := &Kong{
-		client: client,
-	}
-	return k, nil
+// JWTCred represents jwt cred object
+type JWTCred struct {
+	ConsumerID string `json:"consumer_id"`
+	Algorithm  string `json:"algorithm"`
+	CreatedAt  int    `json:"created_at"`
+	ID         string `json:"id"`
+	Key        string `json:"key"`
+	Secret     string `json:"secret"`
 }
 
-// Ready creates a new Kong api
-func (k *Kong) Ready(timeout chan bool, ready chan bool) {
-	for i := 0; i < 20; i++ {
-		resp, err := k.client.Get(kongAdminService)
-		if err != nil {
-			logrus.Error("Error getting kong admin status: ", err)
-		} else {
-			if resp.StatusCode == 200 {
-				logrus.Info("Kong API is ready!")
-				ready <- true
-				return
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	timeout <- true
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+// KeyCreds represents key auth plugin response
+type KeyCreds struct {
+	Data  []KeyCred `json:"data"`
+	Total int       `json:"total"`
+}
+
+// KeyCred represents jwt cred object
+type KeyCred struct {
+	ConsumerID string `json:"consumer_id"`
+	CreatedAt  int    `json:"created_at"`
+	ID         string `json:"id"`
+	Key        string `json:"key"`
 }

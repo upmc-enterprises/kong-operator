@@ -171,7 +171,7 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 
 		for _, plugin := range c.Spec.Plugins {
 			logrus.Info("Processing plugin: ", plugin.Name)
-			p.kong.EnablePlugin(plugin)
+			p.kong.EnablePlugin(plugin, c.Spec.Consumers)
 		}
 	}
 
@@ -187,16 +187,11 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 func (p *Processor) createKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Create Kong Event!")
 
-	// Refresh
-	p.refreshClusters()
-
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
-		pg.SimplePostgresService(p.k8sclient, namespace)
-		pg.SimplePostgresDeployment(p.k8sclient, namespace)
 		pg.SimplePostgresSecret(p.k8sclient, namespace)
 	} else {
-		pg.DeleteSimplePostgres(p.k8sclient, namespace)
+		// pg.DeleteSimplePostgres(p.k8sclient, namespace)
 	}
 
 	// Is a base image defined in the custom cluster?

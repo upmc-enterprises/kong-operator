@@ -33,6 +33,13 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
+// ConsumerTPR represents a user of the API
+type ConsumerTPR struct {
+	Username    string `json:"username"`
+	CustomID    string `json:"custom_id"`
+	MaxNumCreds int    `json:"maxNumCreds"`
+}
+
 // Consumer represents a user of the API
 type Consumer struct {
 	Username string `json:"username"`
@@ -40,10 +47,13 @@ type Consumer struct {
 }
 
 // CreateConsumer creates a consumer
-func (k *Kong) CreateConsumer(consumer Consumer) error {
+func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
+
+	c := Consumer{Username: consumer.Username, CustomID: consumer.CustomID}
+
 	// Create JSON
 	buf := new(bytes.Buffer)
-	json.NewEncoder(buf).Encode(consumer)
+	json.NewEncoder(buf).Encode(c)
 
 	// Setup URL
 	url := fmt.Sprintf("%s/consumers/", kongAdminService)
@@ -66,4 +76,78 @@ func (k *Kong) CreateConsumer(consumer Consumer) error {
 	logrus.Infof("Created consumer: %s", consumer.Username)
 
 	return nil
+}
+
+// GetJWTPluginCreds gets creds for
+func (k *Kong) GetJWTPluginCreds(username string) JWTCreds {
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/%s/jwt", kongAdminService, username)
+
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could get jwt-auth for consumer: ", err)
+		return JWTCreds{}
+	}
+
+	defer resp.Body.Close()
+
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+
+		logrus.Errorf("Get consumer auth returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return JWTCreds{}
+	}
+
+	// parse to object
+	var creds JWTCreds
+	err = json.Unmarshal(bodyBytes, &creds)
+	if err != nil {
+		logrus.Error("Error parsing jwt-creds: ", err)
+	}
+
+	return creds
+}
+
+// GetKeyPluginCreds gets creds for
+func (k *Kong) GetKeyPluginCreds(username string) KeyCreds {
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/%s/key-auth", kongAdminService, username)
+
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could get key-auth for consumer: ", err)
+		return KeyCreds{}
+	}
+
+	defer resp.Body.Close()
+
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+
+		logrus.Errorf("Get consumer auth returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return KeyCreds{}
+	}
+
+	// parse to object
+	var creds KeyCreds
+	err = json.Unmarshal(bodyBytes, &creds)
+	if err != nil {
+		logrus.Error("Error parsing key-creds: ", err)
+	}
+
+	return creds
+}
+
+// FindConsumer finds item in existing consumers
+func FindConsumer(a string, list []ConsumerTPR) (bool, ConsumerTPR) {
+	for i, b := range list {
+		if b.Username == a {
+			return true, list[i]
+		}
+	}
+	return false, ConsumerTPR{}
 }

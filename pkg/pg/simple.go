@@ -65,9 +65,8 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 					Spec: v1.PodSpec{
 						Containers: []v1.Container{
 							v1.Container{
-								Name:            "postgres",
-								Image:           "postgres:9.4",
-								ImagePullPolicy: "Always",
+								Name:  "postgres",
+								Image: "postgres:9.4",
 								Env: []v1.EnvVar{
 									v1.EnvVar{
 										Name:  "POSTGRES_USER",
@@ -204,58 +203,10 @@ func SimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
 
 // // DeleteSimplePostgresSecret deletes simple secret
 // func DeleteSimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
-
 // }
 
 // DeleteSimplePostgres cleans up deployment / service for postgres db
 func DeleteSimplePostgres(k *k8sutil.K8sutil, namespace string) {
 
-	err := k.Kclient.Services(namespace).Delete("postgres", &v1.DeleteOptions{})
-	if err != nil {
-		logrus.Error("Could not delete service postgres: ", err)
-	} else {
-		logrus.Infof("Delete service: %s", "postgres")
-	}
-
-	// Get list of deployment
-	deployment, err := k.Kclient.Deployments(namespace).Get("postgres")
-
-	if err != nil {
-		logrus.Error("Could not get deployments! ", err)
-	}
-
-	//Scale the deployment down to zero (https://github.com/kubernetes/client-go/issues/91)
-	deployment.Spec.Replicas = new(int32)
-	_, err = k.Kclient.Deployments(namespace).Update(deployment)
-
-	if err != nil {
-		logrus.Errorf("Could not scale deployment: %s ", deployment.Name)
-	} else {
-		logrus.Infof("Scaled deployment: %s to zero", deployment.Name)
-	}
-
-	err = k.Kclient.Deployments(namespace).Delete(deployment.Name, &v1.DeleteOptions{})
-
-	if err != nil {
-		logrus.Errorf("Could not delete deployments: %s ", deployment.Name)
-	} else {
-		logrus.Infof("Deleted deployment: %s", deployment.Name)
-	}
-
-	// Get list of ReplicaSets
-	replicaSets, err := k.Kclient.ReplicaSets(namespace).List(v1.ListOptions{LabelSelector: "app=kong,name=postgres"})
-
-	if err != nil {
-		logrus.Error("Could not get replica sets! ", err)
-	}
-
-	for _, replicaSet := range replicaSets.Items {
-		err := k.Kclient.ReplicaSets(namespace).Delete(replicaSet.Name, &v1.DeleteOptions{})
-
-		if err != nil {
-			logrus.Errorf("Could not delete replica sets: %s ", replicaSet.Name)
-		} else {
-			logrus.Infof("Deleted replica set: %s", replicaSet.Name)
-		}
-	}
+	//TODO DELETE SECRET!
 }

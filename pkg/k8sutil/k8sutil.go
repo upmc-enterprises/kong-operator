@@ -336,12 +336,6 @@ func (k *K8sutil) CreateKongAdminService() error {
 				Ports: []v1.ServicePort{
 					v1.ServicePort{
 						Name:       "kong-admin",
-						Port:       8444,
-						TargetPort: intstr.FromInt(8444),
-						Protocol:   "TCP",
-					},
-					v1.ServicePort{
-						Name:       "kong-admin-insecure",
 						Port:       8001,
 						TargetPort: intstr.FromInt(8001),
 						Protocol:   "TCP",
@@ -417,9 +411,8 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 					Spec: v1.PodSpec{
 						Containers: []v1.Container{
 							v1.Container{
-								Name:            kongDeploymentName,
-								Image:           baseImage,
-								ImagePullPolicy: "Always",
+								Name:  kongDeploymentName,
+								Image: baseImage,
 								Env: []v1.EnvVar{
 									v1.EnvVar{
 										Name: "NAMESPACE",
@@ -432,7 +425,6 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 									v1.EnvVar{
 										Name: "KONG_PG_USER",
 										ValueFrom: &v1.EnvVarSource{
-
 											SecretKeyRef: &v1.SecretKeySelector{
 												Key: "KONG_PG_USER",
 												LocalObjectReference: v1.LocalObjectReference{
@@ -474,19 +466,23 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 											},
 										},
 									},
-									// v1.EnvVar{
-									// 	Name:  "KONG_ADMIN_LISTEN",
-									// 	Value: "127.0.0.1:8001",
-									// },
+									v1.EnvVar{
+										Name: "KONG_HOST_IP",
+										ValueFrom: &v1.EnvVarSource{
+											FieldRef: &v1.ObjectFieldSelector{
+												APIVersion: "v1",
+												FieldPath:  "status.podIP",
+											},
+										},
+									},
+								},
+								Command: []string{
+									"/bin/sh", "-c",
+									"KONG_CLUSTER_ADVERTISE=$(KONG_HOST_IP):7946 KONG_NGINX_DAEMON='off' kong start",
 								},
 								Ports: []v1.ContainerPort{
 									v1.ContainerPort{
 										Name:          "admin",
-										ContainerPort: 8444,
-										Protocol:      v1.ProtocolTCP,
-									},
-									v1.ContainerPort{
-										Name:          "admin-insecure",
 										ContainerPort: 8001,
 										Protocol:      v1.ProtocolTCP,
 									},
@@ -508,7 +504,7 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 									v1.ContainerPort{
 										Name:          "surf-udp",
 										ContainerPort: 7946,
-										Protocol:      v1.ProtocolTCP,
+										Protocol:      v1.ProtocolUDP,
 									},
 								},
 							},

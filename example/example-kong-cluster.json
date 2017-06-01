@@ -16,17 +16,40 @@
       ]
     }],
     "plugins": [{
-      "name": "key-auth",
-      "config": {
-        "hide_credentials": "true"
+        "name": "key-auth",
+        "config": {
+          "hide_credentials": "true"
+        },
+        "apis": [
+          "go-microservice"
+        ],
+        "consumers": [{
+          "username": "slokas"
+        }]
       },
-      "apis": [
-        "go-microservice"
-      ]
-    }],
+      {
+        "name": "jwt",
+        "apis": [
+          "go-microservice"
+        ],
+        "consumers": [{
+          "username": "slokas"
+        }]
+      },
+      {
+        "name": "hmac-auth",
+        "apis": [
+          "go-microservice"
+        ],
+        "consumers": [{
+          "username": "slokas"
+        }]
+      }
+    ],
     "consumers": [{
       "username": "slokas",
-      "custom_id": "ABC123"
+      "custom_id": "ABC123",
+      "maxNumCreds": 2
     }]
   }
 }
