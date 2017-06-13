@@ -143,67 +143,7 @@ func (p *Processor) processKongEvent(c *tpr.KongCluster) error {
 func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Update Kong Event!")
 
-	// Get current APIs from Kong
-	kongApis := p.kong.GetAPIs()
-
-	// Get current plugins from Kong
-	kongPlugins := p.kong.GetPlugins()
-
-	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
-
-	// process apis
-	for _, api := range c.Spec.Apis {
-
-		found, position := kong.FindAPI(api.Name, kongApis.Data)
-
-		// --- Apis
-		if found {
-			logrus.Infof("Existing API [%s] found, updating...", kongApis.Data[position].Name)
-			p.kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
-
-			// Clean up local list
-			kongApis.Data = kong.RemoveAPI(kongApis.Data, position)
-		} else {
-			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
-			p.kong.CreateAPI(api)
-		}
-
-		// --- Consumers
-		for _, consumer := range c.Spec.Consumers {
-			logrus.Info("Processing consumer: ", consumer.Username)
-			p.kong.CreateConsumer(consumer)
-		}
-
-		// --- Plugins
-		for _, plugin := range c.Spec.Plugins {
-			logrus.Info("Processing plugin: ", plugin.Name)
-
-			existing, plug := p.kong.IsPluginExisting(plugin)
-
-			if existing {
-				logrus.Infof("Plugin already existing [%s], updating...", plugin.Name)
-				p.kong.UpdatePlugin(plugin, plug.ID)
-
-				// Clean up local list
-				kongPlugins.Data = kong.RemovePlugin(kongPlugins.Data, plug.ID)
-			} else {
-				logrus.Infof("Plugin not found [%s], creating...", plugin.Name)
-				p.kong.EnablePlugin(plugin)
-			}
-		}
-	}
-
-	// Delete existing apis left
-	for _, api := range kongApis.Data {
-		logrus.Infof("Deleting api: %s", api.Name)
-		p.kong.DeleteAPI(api.Name)
-	}
-
-	// Delete existing plugins left
-	for _, plug := range kongPlugins.Data {
-		logrus.Infof("Deleting plugin: %s", plug.Name)
-		p.kong.DeletePlugin(plug.APIId, plug.ID)
-	}
+	p.process(c)
 
 	return nil
 }
@@ -237,25 +177,80 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 
 	select {
 	case <-ready:
-		// process apis
-		for _, api := range c.Spec.Apis {
-			logrus.Info("Processing API: ", api.Name)
-			p.kong.CreateAPI(api)
-		}
-
-		// process plugins
-		for _, plugin := range c.Spec.Plugins {
-			logrus.Info("Processing plugin: ", plugin.Name)
-			logrus.Info("----> config: ", plugin.Config)
-		}
-
-		// process plugins
+		p.process(c)
 	case <-timeout:
 		// the read from ready has timed out
 		logrus.Error("Giving up waiting for kong-api to become ready...")
 	}
 
 	return nil
+}
+
+func (p *Processor) process(c *tpr.KongCluster) {
+	// Get current APIs from Kong
+	kongApis := p.kong.GetAPIs()
+
+	// Get current plugins from Kong
+	kongPlugins := p.kong.GetPlugins()
+
+	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
+
+	// process apis
+	for _, api := range c.Spec.Apis {
+
+		found, position := kong.FindAPI(api.Name, kongApis.Data)
+
+		// --- Apis
+		if found {
+			logrus.Infof("Existing API [%s] found, updating...", kongApis.Data[position].Name)
+			p.kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
+
+			// Clean up local list
+			kongApis.Data = kong.RemoveAPI(kongApis.Data, position)
+		} else {
+			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
+			p.kong.CreateAPI(api)
+		}
+
+		// --- Consumers
+		for _, consumer := range c.Spec.Consumers {
+			logrus.Info("Processing consumer: ", consumer.Username)
+
+			if !p.kong.ConsumerExists(consumer.Username) {
+				p.kong.CreateConsumer(consumer)
+			}
+		}
+
+		// --- Plugins
+		for _, plugin := range c.Spec.Plugins {
+			logrus.Info("Processing plugin: ", plugin.Name)
+
+			existing, plug := p.kong.IsPluginExisting(plugin)
+
+			if existing {
+				logrus.Infof("Plugin already existing [%s], updating...", plugin.Name)
+				p.kong.UpdatePlugin(plugin, plug.ID)
+
+				// Clean up local list
+				kongPlugins.Data = kong.RemovePlugin(kongPlugins.Data, plug.ID)
+			} else {
+				logrus.Infof("Plugin not found [%s], creating...", plugin.Name)
+				p.kong.EnablePlugin(plugin)
+			}
+		}
+	}
+
+	// Delete existing apis left
+	for _, api := range kongApis.Data {
+		logrus.Infof("Deleting api: %s", api.Name)
+		p.kong.DeleteAPI(api.Name)
+	}
+
+	// Delete existing plugins left
+	for _, plug := range kongPlugins.Data {
+		logrus.Infof("Deleting plugin: %s", plug.Name)
+		p.kong.DeletePlugin(plug.APIId, plug.ID)
+	}
 }
 
 func (p *Processor) deleteKong(c *tpr.KongCluster) error {

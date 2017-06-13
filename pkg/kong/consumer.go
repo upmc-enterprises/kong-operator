@@ -48,7 +48,6 @@ type Consumer struct {
 
 // CreateConsumer creates a consumer
 func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
-
 	c := Consumer{Username: consumer.Username, CustomID: consumer.CustomID}
 
 	// Create JSON
@@ -76,6 +75,29 @@ func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
 	logrus.Infof("Created consumer: %s", consumer.Username)
 
 	return nil
+}
+
+// ConsumerExists checks if a consumer exists already
+func (k *Kong) ConsumerExists(username string) bool {
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/%s", kongAdminService, username)
+
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could not create consumer: ", err)
+		return false
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Create consumer returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return false
+	}
+
+	return true
 }
 
 // GetJWTPluginCreds gets creds for
