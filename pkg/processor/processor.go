@@ -149,10 +149,6 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 	// Get current plugins from Kong
 	kongPlugins := p.kong.GetPlugins()
 
-	// for _, pl := range plugins.Data {
-	// 	logrus.Infof("-------- plugin existing: %s for api: %s", pl.Name, pl.APIId)
-	// }
-
 	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
 
 	// process apis
