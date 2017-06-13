@@ -25,7 +25,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package processor
 
 import (
-	"os"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
@@ -39,26 +38,27 @@ import (
 // not happen at the same time.
 var (
 	processorLock = &sync.Mutex{}
-	namespace     = os.Getenv("NAMESPACE")
 )
 
 // Processor object
 type Processor struct {
 	k8sclient *k8sutil.K8sutil
 	baseImage string
-	clusters  map[string]*tpr.KongCluster
-	kong      *kong.Kong
+	clusters  map[string]KongCluster
+}
+
+// KongCluster represents an instance of a cluster setup via TPR
+type KongCluster struct {
+	cluster *tpr.KongCluster
+	kong    *kong.Kong
 }
 
 // New creates new instance of Processor
 func New(kclient *k8sutil.K8sutil, baseImage string) (*Processor, error) {
-	kong, _ := kong.New()
-
 	p := &Processor{
 		k8sclient: kclient,
 		baseImage: baseImage,
-		clusters:  make(map[string]*tpr.KongCluster),
-		kong:      kong,
+		clusters:  make(map[string]KongCluster),
 	}
 
 	return p, nil
@@ -67,7 +67,6 @@ func New(kclient *k8sutil.K8sutil, baseImage string) (*Processor, error) {
 // Run starts the processor
 func (p *Processor) Run() error {
 
-	p.refreshClusters()
 	logrus.Infof("Found %d existing clusters ", len(p.clusters))
 
 	return nil
@@ -97,9 +96,6 @@ func (p *Processor) WatchKongEvents(done chan struct{}, wg *sync.WaitGroup) {
 
 func (p *Processor) refreshClusters() error {
 
-	//Reset
-	p.clusters = make(map[string]*tpr.KongCluster)
-
 	// Get existing clusters
 	currentClusters, err := p.k8sclient.GetKongClusters()
 
@@ -110,8 +106,31 @@ func (p *Processor) refreshClusters() error {
 
 	for _, cluster := range currentClusters {
 		logrus.Infof("Found cluster: %s", cluster.Spec.Name)
+		p.addInstanceIfNotExisting(cluster)
+	}
 
-		p.clusters[cluster.Spec.Name] = &tpr.KongCluster{
+	return nil
+}
+
+func (p *Processor) addInstanceIfNotExisting(cluster tpr.KongCluster) {
+	if _, exists := p.clusters[cluster.Spec.Name]; exists {
+		// Cluster already existing
+	} else {
+		logrus.Infof("Found new cluster! [%s]", cluster.Spec.Name)
+		p.clusters[cluster.Spec.Name] = p.createKongInstance(cluster)
+	}
+}
+
+func (p *Processor) createKongInstance(cluster tpr.KongCluster) KongCluster {
+
+	kong, err := kong.New(cluster.Metadata.Namespace)
+
+	if err != nil {
+		logrus.Error("Error creating kong instance: ", err)
+	}
+
+	kc := KongCluster{
+		cluster: &tpr.KongCluster{
 			Spec: tpr.ClusterSpec{
 				Name:              cluster.Spec.Name,
 				Replicas:          cluster.Spec.Replicas,
@@ -119,10 +138,11 @@ func (p *Processor) refreshClusters() error {
 				UseSamplePostgres: cluster.Spec.UseSamplePostgres,
 				Apis:              cluster.Spec.Apis,
 			},
-		}
+		},
+		kong: kong,
 	}
 
-	return nil
+	return kc
 }
 
 func (p *Processor) processKongEvent(c *tpr.KongCluster) error {
@@ -151,9 +171,12 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 func (p *Processor) createKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Create Kong Event!")
 
+	// Create instance in local cluster list
+	p.clusters[c.Spec.Name] = p.createKongInstance(*c)
+
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
-		pg.SimplePostgresSecret(p.k8sclient, namespace)
+		pg.SimplePostgresSecret(p.k8sclient, c.Metadata.Namespace)
 	}
 
 	// Is a base image defined in the custom cluster?
@@ -162,18 +185,18 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 	logrus.Infof("Using [%s] as image for es cluster", baseImage)
 
 	// Create Services
-	p.k8sclient.CreateKongAdminService()
-	p.k8sclient.CreateKongProxyService()
+	p.k8sclient.CreateKongAdminService(c.Metadata.Namespace)
+	p.k8sclient.CreateKongProxyService(c.Metadata.Namespace)
 
 	// Create deployment
-	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas)
+	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas, c.Metadata.Namespace)
 
 	// Wait for kong to be ready
 	timeout := make(chan bool, 1)
 	ready := make(chan bool)
 
 	logrus.Info("Waiting for Kong API to become ready....")
-	go p.kong.Ready(timeout, ready)
+	go p.clusters[c.Spec.Name].kong.Ready(timeout, ready)
 
 	select {
 	case <-ready:
@@ -187,11 +210,14 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 }
 
 func (p *Processor) process(c *tpr.KongCluster) {
+	// Lookup cluster
+	p.addInstanceIfNotExisting(*c)
+
 	// Get current APIs from Kong
-	kongApis := p.kong.GetAPIs()
+	kongApis := p.clusters[c.Spec.Name].kong.GetAPIs()
 
 	// Get current plugins from Kong
-	kongPlugins := p.kong.GetPlugins()
+	kongPlugins := p.clusters[c.Spec.Name].kong.GetPlugins()
 
 	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
 
@@ -203,21 +229,21 @@ func (p *Processor) process(c *tpr.KongCluster) {
 		// --- Apis
 		if found {
 			logrus.Infof("Existing API [%s] found, updating...", kongApis.Data[position].Name)
-			p.kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
+			p.clusters[c.Spec.Name].kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
 
 			// Clean up local list
 			kongApis.Data = kong.RemoveAPI(kongApis.Data, position)
 		} else {
 			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
-			p.kong.CreateAPI(api)
+			p.clusters[c.Spec.Name].kong.CreateAPI(api)
 		}
 
 		// --- Consumers
 		for _, consumer := range c.Spec.Consumers {
 			logrus.Info("Processing consumer: ", consumer.Username)
 
-			if !p.kong.ConsumerExists(consumer.Username) {
-				p.kong.CreateConsumer(consumer)
+			if !p.clusters[c.Spec.Name].kong.ConsumerExists(consumer.Username) {
+				p.clusters[c.Spec.Name].kong.CreateConsumer(consumer)
 			}
 		}
 
@@ -225,17 +251,17 @@ func (p *Processor) process(c *tpr.KongCluster) {
 		for _, plugin := range c.Spec.Plugins {
 			logrus.Info("Processing plugin: ", plugin.Name)
 
-			existing, plug := p.kong.IsPluginExisting(plugin)
+			existing, plug := p.clusters[c.Spec.Name].kong.IsPluginExisting(plugin)
 
 			if existing {
 				logrus.Infof("Plugin already existing [%s], updating...", plugin.Name)
-				p.kong.UpdatePlugin(plugin, plug.ID)
+				p.clusters[c.Spec.Name].kong.UpdatePlugin(plugin, plug.ID)
 
 				// Clean up local list
 				kongPlugins.Data = kong.RemovePlugin(kongPlugins.Data, plug.ID)
 			} else {
 				logrus.Infof("Plugin not found [%s], creating...", plugin.Name)
-				p.kong.EnablePlugin(plugin)
+				p.clusters[c.Spec.Name].kong.EnablePlugin(plugin)
 			}
 		}
 	}
@@ -243,36 +269,36 @@ func (p *Processor) process(c *tpr.KongCluster) {
 	// Delete existing apis left
 	for _, api := range kongApis.Data {
 		logrus.Infof("Deleting api: %s", api.Name)
-		p.kong.DeleteAPI(api.Name)
+		p.clusters[c.Spec.Name].kong.DeleteAPI(api.Name)
 	}
 
 	// Delete existing plugins left
 	for _, plug := range kongPlugins.Data {
 		logrus.Infof("Deleting plugin: %s", plug.Name)
-		p.kong.DeletePlugin(plug.APIId, plug.ID)
+		p.clusters[c.Spec.Name].kong.DeletePlugin(plug.APIId, plug.ID)
 	}
 }
 
 func (p *Processor) deleteKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Kong Cluster deleted...removing all components...")
 
-	err := p.k8sclient.DeleteKongDeployment()
+	err := p.k8sclient.DeleteKongDeployment(p.clusters[c.Spec.Name].kong.KongAdminURL)
 	if err != nil {
 		logrus.Error("Could not delete kong deployment:", err)
 	}
 
-	err = p.k8sclient.DeleteAdminService()
+	err = p.k8sclient.DeleteAdminService(p.clusters[c.Spec.Name].kong.KongAdminURL)
 	if err != nil {
 		logrus.Error("Could not delete admin service:", err)
 	}
 
-	err = p.k8sclient.DeleteProxyService()
+	err = p.k8sclient.DeleteProxyService(p.clusters[c.Spec.Name].kong.KongAdminURL)
 	if err != nil {
 		logrus.Error("Could not delete proxy service:", err)
 	}
 
 	if c.Spec.UseSamplePostgres {
-		pg.DeleteSimplePostgres(p.k8sclient, namespace)
+		pg.DeleteSimplePostgres(p.k8sclient, c.Metadata.Namespace)
 	}
 
 	return nil

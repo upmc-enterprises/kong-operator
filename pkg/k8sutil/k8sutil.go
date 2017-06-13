@@ -50,8 +50,7 @@ import (
 )
 
 var (
-	namespace = os.Getenv("NAMESPACE")
-	tprName   = "kong-cluster.enterprises.upmc.com"
+	tprName = "kong-cluster.enterprises.upmc.com"
 )
 
 const (
@@ -214,11 +213,6 @@ func (k *K8sutil) GetKongClusters() ([]tpr.KongCluster, error) {
 
 // MonitorKongEvents watches for new or removed clusters
 func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *tpr.KongCluster, <-chan error) {
-	// Validate Namespace exists
-	if len(namespace) == 0 {
-		logrus.Errorln("WARNING: No namespace found! Events will not be able to be watched!")
-	}
-
 	events := make(chan *tpr.KongCluster)
 	errc := make(chan error, 1)
 
@@ -257,7 +251,7 @@ func (k *K8sutil) MonitorKongEvents(stopchan chan struct{}) (<-chan *tpr.KongClu
 }
 
 // CreateKongProxyService creates the kong proxy service
-func (k *K8sutil) CreateKongProxyService() error {
+func (k *K8sutil) CreateKongProxyService(namespace string) error {
 
 	// Check if service exists
 	svc, err := k.Kclient.Services(namespace).Get(kongProxyServiceName)
@@ -313,7 +307,7 @@ func (k *K8sutil) CreateKongProxyService() error {
 }
 
 // CreateKongAdminService creates the kong proxy service
-func (k *K8sutil) CreateKongAdminService() error {
+func (k *K8sutil) CreateKongAdminService(namespace string) error {
 
 	// Check if service exists
 	svc, err := k.Kclient.Services(namespace).Get(kongAdminServiceName)
@@ -360,7 +354,7 @@ func (k *K8sutil) CreateKongAdminService() error {
 }
 
 // DeleteProxyService creates the kong proxy service
-func (k *K8sutil) DeleteProxyService() error {
+func (k *K8sutil) DeleteProxyService(namespace string) error {
 	err := k.Kclient.Services(namespace).Delete(kongProxyServiceName, &v1.DeleteOptions{})
 	if err != nil {
 		logrus.Error("Could not delete service "+kongProxyServiceName+":", err)
@@ -372,7 +366,7 @@ func (k *K8sutil) DeleteProxyService() error {
 }
 
 // DeleteAdminService creates the kong admin service
-func (k *K8sutil) DeleteAdminService() error {
+func (k *K8sutil) DeleteAdminService(namespace string) error {
 	err := k.Kclient.Services(namespace).Delete(kongAdminServiceName, &v1.DeleteOptions{})
 	if err != nil {
 		logrus.Error("Could not delete service "+kongAdminServiceName+":", err)
@@ -384,7 +378,7 @@ func (k *K8sutil) DeleteAdminService() error {
 }
 
 // CreateKongDeployment creates the kong deployment
-func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error {
+func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32, namespace string) error {
 
 	// Check if deployment exists
 	deployment, err := k.Kclient.Deployments(namespace).Get(kongDeploymentName)
@@ -541,7 +535,7 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 }
 
 // DeleteKongDeployment deletes kong deployment
-func (k *K8sutil) DeleteKongDeployment() error {
+func (k *K8sutil) DeleteKongDeployment(namespace string) error {
 
 	// Get list of deployments
 	deployment, err := k.Kclient.Deployments(namespace).Get(kongDeploymentName)

@@ -83,7 +83,7 @@ func (k *Kong) EnablePlugin(plugin Plugin) {
 
 	for _, api := range plugin.Apis {
 		// Setup URL
-		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
+		url := fmt.Sprintf("%s/apis/%s/plugins", k.KongAdminURL, api)
 		resp, err := k.client.Post(url, "application/json", bytes.NewBuffer(createPluginJSON))
 
 		if err != nil {
@@ -109,7 +109,7 @@ func (k *Kong) UpdatePlugin(plugin Plugin, ID string) {
 
 	for _, api := range plugin.Apis {
 		// Setup URL
-		url := fmt.Sprintf("%s/apis/%s/plugins/%s", kongAdminService, api, ID)
+		url := fmt.Sprintf("%s/apis/%s/plugins/%s", k.KongAdminURL, api, ID)
 
 		req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(updatePluginJSON))
 		if err != nil {
@@ -140,7 +140,7 @@ func (k *Kong) UpdatePlugin(plugin Plugin, ID string) {
 func (k *Kong) GetPlugins() APIPlugins {
 	var plugins APIPlugins
 
-	url := fmt.Sprintf("%s/plugins", kongAdminService)
+	url := fmt.Sprintf("%s/plugins", k.KongAdminURL)
 	resp, err := k.client.Get(url)
 
 	if err != nil {
@@ -165,7 +165,7 @@ func (k *Kong) GetPlugins() APIPlugins {
 // DeletePlugin deletes Kong plugin
 func (k *Kong) DeletePlugin(apiName, pluginID string) error {
 	// Setup URL
-	url := fmt.Sprintf("%s/apis/%s/plugins/%s", kongAdminService, apiName, pluginID)
+	url := fmt.Sprintf("%s/apis/%s/plugins/%s", k.KongAdminURL, apiName, pluginID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -196,7 +196,7 @@ func (k *Kong) DeletePlugin(apiName, pluginID string) error {
 func (k *Kong) IsPluginExisting(plugin Plugin) (bool, APIPluginData) {
 
 	for _, api := range plugin.Apis {
-		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
+		url := fmt.Sprintf("%s/apis/%s/plugins", k.KongAdminURL, api)
 		resp, err := k.client.Get(url)
 
 		if err != nil {

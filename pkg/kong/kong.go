@@ -28,46 +28,37 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 )
 
-var (
-	// TODO: This needs to be based upon the namespace the
-	kongAdminService    = fmt.Sprintf("https://%s:%s", os.Getenv("KONG_ADMIN_PORT_8444_TCP_ADDR"), os.Getenv("KONG_ADMIN_PORT_8444_TCP_PORT"))
-	kongAdminServiceDNS = "https://kong-admin:8444"
-)
-
 // Kong struct
 type Kong struct {
-	client *http.Client
+	client       *http.Client
+	KongAdminURL string
 }
 
 // New creates an instance of Kong
-func New() (*Kong, error) {
+func New(namespace string) (*Kong, error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Transport: tr, Timeout: time.Second * 10}
 
 	k := &Kong{
-		client: client,
+		client:       client,
+		KongAdminURL: GetKongAdminURL(namespace),
 	}
 	return k, nil
 }
 
 // Ready creates a new Kong api
 func (k *Kong) Ready(timeout chan bool, ready chan bool) {
-	if len(kongAdminService) < 10 {
-		kongAdminService = kongAdminServiceDNS
-	}
-
-	logrus.Infof("Using [%s] as kong-admin url", kongAdminService)
+	logrus.Infof("Using [%s] as kong-admin url", k.KongAdminURL)
 
 	for i := 0; i < 20; i++ {
-		resp, err := k.client.Get(kongAdminService)
+		resp, err := k.client.Get(k.KongAdminURL)
 		if err != nil {
 			logrus.Error("Error getting kong admin status: ", err)
 		} else {
@@ -80,4 +71,8 @@ func (k *Kong) Ready(timeout chan bool, ready chan bool) {
 		time.Sleep(2 * time.Second)
 	}
 	timeout <- true
+}
+
+func GetKongAdminURL(namespace string) string {
+	return fmt.Sprintf("https://kong-admin.%s:8444", namespace)
 }

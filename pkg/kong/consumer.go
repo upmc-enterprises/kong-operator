@@ -55,7 +55,7 @@ func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
 	json.NewEncoder(buf).Encode(c)
 
 	// Setup URL
-	url := fmt.Sprintf("%s/consumers/", kongAdminService)
+	url := fmt.Sprintf("%s/consumers/", k.KongAdminURL)
 
 	resp, err := k.client.Post(url, "application/json", buf)
 
@@ -80,7 +80,7 @@ func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
 // ConsumerExists checks if a consumer exists already
 func (k *Kong) ConsumerExists(username string) bool {
 	// Setup URL
-	url := fmt.Sprintf("%s/consumers/%s", kongAdminService, username)
+	url := fmt.Sprintf("%s/consumers/%s", k.KongAdminURL, username)
 
 	resp, err := k.client.Get(url)
 
@@ -103,7 +103,7 @@ func (k *Kong) ConsumerExists(username string) bool {
 // GetJWTPluginCreds gets creds for
 func (k *Kong) GetJWTPluginCreds(username string) JWTCreds {
 	// Setup URL
-	url := fmt.Sprintf("%s/consumers/%s/jwt", kongAdminService, username)
+	url := fmt.Sprintf("%s/consumers/%s/jwt", k.KongAdminURL, username)
 
 	resp, err := k.client.Get(url)
 
@@ -135,7 +135,7 @@ func (k *Kong) GetJWTPluginCreds(username string) JWTCreds {
 // GetKeyPluginCreds gets creds for
 func (k *Kong) GetKeyPluginCreds(username string) KeyCreds {
 	// Setup URL
-	url := fmt.Sprintf("%s/consumers/%s/key-auth", kongAdminService, username)
+	url := fmt.Sprintf("%s/consumers/%s/key-auth", k.KongAdminURL, username)
 
 	resp, err := k.client.Get(url)
 

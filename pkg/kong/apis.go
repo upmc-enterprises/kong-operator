@@ -71,7 +71,7 @@ func (k *Kong) GetAPIs() APIS {
 	var apis APIS
 
 	// Setup URL
-	url := fmt.Sprintf("%s/apis/", kongAdminService)
+	url := fmt.Sprintf("%s/apis/", k.KongAdminURL)
 
 	resp, err := k.client.Get(url)
 
@@ -103,7 +103,7 @@ func (k *Kong) CreateAPI(api Data) error {
 	json.NewEncoder(buf).Encode(createAPI)
 
 	// Setup URL
-	url := fmt.Sprintf("%s/apis/", kongAdminService)
+	url := fmt.Sprintf("%s/apis/", k.KongAdminURL)
 
 	resp, err := k.client.Post(url, "application/json", buf)
 
@@ -135,7 +135,7 @@ func (k *Kong) UpdateAPI(name, upstream string, hosts []string) error {
 	json.NewEncoder(buf).Encode(updateAPI)
 
 	// Setup URL
-	url := fmt.Sprintf("%s/apis/%s", kongAdminService, name)
+	url := fmt.Sprintf("%s/apis/%s", k.KongAdminURL, name)
 
 	req, err := http.NewRequest("PATCH", url, buf)
 	if err != nil {
@@ -167,7 +167,7 @@ func (k *Kong) UpdateAPI(name, upstream string, hosts []string) error {
 // DeleteAPI deletes a Kong api
 func (k *Kong) DeleteAPI(name string) error {
 	// Setup URL
-	url := fmt.Sprintf("%s/apis/%s", kongAdminService, name)
+	url := fmt.Sprintf("%s/apis/%s", k.KongAdminURL, name)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
