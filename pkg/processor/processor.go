@@ -169,10 +169,23 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 			p.kong.CreateConsumer(consumer)
 		}
 
+		// TODO: Validate that only a single auth plugin in enabled
+
 		for _, plugin := range c.Spec.Plugins {
 			logrus.Info("Processing plugin: ", plugin.Name)
-			p.kong.EnablePlugin(plugin, c.Spec.Consumers)
+
+			enabled, plug := p.kong.IsPluginEnabled(plugin)
+
+			if enabled {
+				logrus.Infof("Plugin already enabled [%s], updating...", plugin.Name)
+				p.kong.UpdatePlugin(plugin, plug.ID)
+			} else {
+				logrus.Infof("Plugin not found [%s], creating...", plugin.Name)
+				p.kong.EnablePlugin(plugin)
+			}
 		}
+
+		// TODO: Delete plugins that have been disabled
 	}
 
 	// Delete existing apis left

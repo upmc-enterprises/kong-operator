@@ -10,7 +10,9 @@ spec:
     protocol: TCP
   selector:
     app: postgres
+
 ---
+
 apiVersion: v1
 kind: ReplicationController
 metadata:

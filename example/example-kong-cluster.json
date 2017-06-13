@@ -10,34 +10,14 @@
     "useSamplePostgres": true,
     "apis": [{
       "name": "go-microservice",
-      "upstream_url": "http://go-microservice.default.svc.cluster.local:8080",
+      "upstream_url": "http://go-microservice.apps.svc.cluster.local:8080",
       "hosts": [
         "service-go.apps.arch.upmce.net"
       ]
     }],
-    "plugins": [{
-        "name": "key-auth",
-        "config": {
-          "hide_credentials": "true"
-        },
-        "apis": [
-          "go-microservice"
-        ],
-        "consumers": [{
-          "username": "slokas"
-        }]
-      },
+    "plugins": [
       {
         "name": "jwt",
-        "apis": [
-          "go-microservice"
-        ],
-        "consumers": [{
-          "username": "slokas"
-        }]
-      },
-      {
-        "name": "hmac-auth",
         "apis": [
           "go-microservice"
         ],

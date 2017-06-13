@@ -336,8 +336,8 @@ func (k *K8sutil) CreateKongAdminService() error {
 				Ports: []v1.ServicePort{
 					v1.ServicePort{
 						Name:       "kong-admin",
-						Port:       8001,
-						TargetPort: intstr.FromInt(8001),
+						Port:       8444,
+						TargetPort: intstr.FromInt(8444),
 						Protocol:   "TCP",
 					},
 				},
@@ -475,17 +475,16 @@ func (k *K8sutil) CreateKongDeployment(baseImage string, replicas *int32) error 
 											},
 										},
 									},
+									v1.EnvVar{
+										Name:  "KONG_ADMIN_LISTEN", // Disable non-tls
+										Value: "127.0.0.1:8001",
+									},
 								},
 								Command: []string{
 									"/bin/sh", "-c",
 									"KONG_CLUSTER_ADVERTISE=$(KONG_HOST_IP):7946 KONG_NGINX_DAEMON='off' kong start",
 								},
 								Ports: []v1.ContainerPort{
-									v1.ContainerPort{
-										Name:          "admin",
-										ContainerPort: 8001,
-										Protocol:      v1.ProtocolTCP,
-									},
 									v1.ContainerPort{
 										Name:          "proxy",
 										ContainerPort: 8000,

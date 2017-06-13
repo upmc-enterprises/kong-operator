@@ -26,8 +26,10 @@ package kong
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -49,6 +51,21 @@ type Plugin struct {
 	Consumers []Consumer `json:"consumers"`
 }
 
+// APIPlugins represents response from /apis/{name}/plugins/
+type APIPlugins struct {
+	Total int             `json:"total"`
+	Data  []APIPluginData `json:"data"`
+}
+
+// APIPluginData represents data response from /apis/{name}/plugins/
+type APIPluginData struct {
+	ID        string `json:"id"`
+	APIId     string `json:"api_id"`
+	Name      string `json:"name"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt int    `json:"created_at"`
+}
+
 func buildJSON(plugin Plugin) string {
 	s := fmt.Sprintf(`{"name":"%s"`, plugin.Name)
 	for k, v := range plugin.Config {
@@ -60,13 +77,11 @@ func buildJSON(plugin Plugin) string {
 }
 
 // EnablePlugin enables a plugin
-func (k *Kong) EnablePlugin(plugin Plugin, consumers []ConsumerTPR) {
+func (k *Kong) EnablePlugin(plugin Plugin) {
 	// Create the api object
 	createPluginJSON := []byte(buildJSON(plugin))
 
-	// --- Step1: Enable plugin
 	for _, api := range plugin.Apis {
-
 		// Setup URL
 		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
 		resp, err := k.client.Post(url, "application/json", bytes.NewBuffer(createPluginJSON))
@@ -85,4 +100,73 @@ func (k *Kong) EnablePlugin(plugin Plugin, consumers []ConsumerTPR) {
 		}
 		logrus.Infof("Enabled plugin: %s", plugin.Name)
 	}
+}
+
+// UpdatePlugin updates a plugin
+func (k *Kong) UpdatePlugin(plugin Plugin, ID string) {
+	// Create the api object
+	updatePluginJSON := []byte(buildJSON(plugin))
+
+	for _, api := range plugin.Apis {
+		// Setup URL
+		url := fmt.Sprintf("%s/apis/%s/plugins/%s", kongAdminService, api, ID)
+
+		req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(updatePluginJSON))
+		if err != nil {
+			logrus.Error("Could not update api: ", err)
+			return
+		}
+
+		req.Header.Add("Content-Type", "application/json")
+		resp, err := k.client.Do(req)
+
+		if err != nil {
+			logrus.Error("Could not update kong plugin: ", err)
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			bodyBytes, _ := ioutil.ReadAll(resp.Body)
+			logrus.Errorf("Enable plugin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+			continue
+		}
+		logrus.Infof("Updated plugin: %s", plugin.Name)
+	}
+}
+
+// IsPluginEnabled determines if a plugin is already enabled
+func (k *Kong) IsPluginEnabled(plugin Plugin) (bool, APIPluginData) {
+
+	for _, api := range plugin.Apis {
+		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
+		resp, err := k.client.Get(url)
+
+		if err != nil {
+			logrus.Error("Could not check for kong plugin: ", err)
+			continue
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			bodyBytes, _ := ioutil.ReadAll(resp.Body)
+			logrus.Errorf("IsPluginEnabled plugin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+			return false, APIPluginData{}
+		}
+
+		// Parse from json
+		var plugins APIPlugins
+		json.NewDecoder(resp.Body).Decode(&plugins)
+
+		// Check if matching
+		for _, p := range plugins.Data {
+			if p.Name == plugin.Name {
+				return true, p
+			}
+		}
+	}
+
+	return false, APIPluginData{}
 }

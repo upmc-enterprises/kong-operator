@@ -26,15 +26,18 @@ package kong
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 )
 
-const (
-	kongAdminService = "http://kong-admin.operator.svc.cluster.local:8001"
-	// kongAdminService = "http://localhost:9005"
+var (
+	// TODO: This needs to be based upon the namespace the
+	kongAdminService    = fmt.Sprintf("https://%s:%s", os.Getenv("KONG_ADMIN_PORT_8444_TCP_ADDR"), os.Getenv("KONG_ADMIN_PORT_8444_TCP_PORT"))
+	kongAdminServiceDNS = "https://kong-admin:8444"
 )
 
 // Kong struct
@@ -57,6 +60,12 @@ func New() (*Kong, error) {
 
 // Ready creates a new Kong api
 func (k *Kong) Ready(timeout chan bool, ready chan bool) {
+	if len(kongAdminService) < 10 {
+		kongAdminService = kongAdminServiceDNS
+	}
+
+	logrus.Infof("Using [%s] as kong-admin url", kongAdminService)
+
 	for i := 0; i < 20; i++ {
 		resp, err := k.client.Get(kongAdminService)
 		if err != nil {
