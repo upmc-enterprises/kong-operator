@@ -144,54 +144,69 @@ func (p *Processor) modifyKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Update Kong Event!")
 
 	// Get current APIs from Kong
-	apis := p.kong.GetAPIs()
+	kongApis := p.kong.GetAPIs()
 
-	logrus.Infof("Found %d apis existing in kong api...", apis.Total)
+	// Get current plugins from Kong
+	kongPlugins := p.kong.GetPlugins()
+
+	// for _, pl := range plugins.Data {
+	// 	logrus.Infof("-------- plugin existing: %s for api: %s", pl.Name, pl.APIId)
+	// }
+
+	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
 
 	// process apis
 	for _, api := range c.Spec.Apis {
 
-		found, position := kong.FindAPI(api.Name, apis.Data)
+		found, position := kong.FindAPI(api.Name, kongApis.Data)
 
+		// --- Apis
 		if found {
-			logrus.Infof("Existing API [%s] found, updating...", apis.Data[position].Name)
+			logrus.Infof("Existing API [%s] found, updating...", kongApis.Data[position].Name)
 			p.kong.UpdateAPI(api.Name, api.UpstreamURL, api.Hosts)
 
 			// Clean up local list
-			apis.Data = kong.Remove(apis.Data, position)
+			kongApis.Data = kong.RemoveAPI(kongApis.Data, position)
 		} else {
 			logrus.Infof("API [%s] not found, creating...", c.Spec.Name)
 			p.kong.CreateAPI(api)
 		}
 
+		// --- Consumers
 		for _, consumer := range c.Spec.Consumers {
 			logrus.Info("Processing consumer: ", consumer.Username)
 			p.kong.CreateConsumer(consumer)
 		}
 
-		// TODO: Validate that only a single auth plugin in enabled
-
+		// --- Plugins
 		for _, plugin := range c.Spec.Plugins {
 			logrus.Info("Processing plugin: ", plugin.Name)
 
-			enabled, plug := p.kong.IsPluginEnabled(plugin)
+			existing, plug := p.kong.IsPluginExisting(plugin)
 
-			if enabled {
-				logrus.Infof("Plugin already enabled [%s], updating...", plugin.Name)
+			if existing {
+				logrus.Infof("Plugin already existing [%s], updating...", plugin.Name)
 				p.kong.UpdatePlugin(plugin, plug.ID)
+
+				// Clean up local list
+				kongPlugins.Data = kong.RemovePlugin(kongPlugins.Data, plug.ID)
 			} else {
 				logrus.Infof("Plugin not found [%s], creating...", plugin.Name)
 				p.kong.EnablePlugin(plugin)
 			}
 		}
-
-		// TODO: Delete plugins that have been disabled
 	}
 
 	// Delete existing apis left
-	for _, api := range apis.Data {
+	for _, api := range kongApis.Data {
 		logrus.Infof("Deleting api: %s", api.Name)
 		p.kong.DeleteAPI(api.Name)
+	}
+
+	// Delete existing plugins left
+	for _, plug := range kongPlugins.Data {
+		logrus.Infof("Deleting plugin: %s", plug.Name)
+		p.kong.DeletePlugin(plug.APIId, plug.ID)
 	}
 
 	return nil
@@ -203,8 +218,6 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
 		pg.SimplePostgresSecret(p.k8sclient, namespace)
-	} else {
-		// pg.DeleteSimplePostgres(p.k8sclient, namespace)
 	}
 
 	// Is a base image defined in the custom cluster?

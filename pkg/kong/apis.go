@@ -164,7 +164,7 @@ func (k *Kong) UpdateAPI(name, upstream string, hosts []string) error {
 	return nil
 }
 
-// DeleteAPI creates a new Kong api
+// DeleteAPI deletes a Kong api
 func (k *Kong) DeleteAPI(name string) error {
 	// Setup URL
 	url := fmt.Sprintf("%s/apis/%s", kongAdminService, name)
@@ -204,8 +204,8 @@ func FindAPI(a string, list []Data) (bool, int) {
 	return false, -1
 }
 
-// Remove takes an item out of the data array
-func Remove(s []Data, i int) []Data {
+// RemoveAPI takes an item out of the data array
+func RemoveAPI(s []Data, i int) []Data {
 	s[len(s)-1], s[i] = s[i], s[len(s)-1]
 	return s[:len(s)-1]
 }

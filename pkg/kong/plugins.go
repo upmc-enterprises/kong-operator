@@ -136,8 +136,64 @@ func (k *Kong) UpdatePlugin(plugin Plugin, ID string) {
 	}
 }
 
-// IsPluginEnabled determines if a plugin is already enabled
-func (k *Kong) IsPluginEnabled(plugin Plugin) (bool, APIPluginData) {
+// GetPlugins gets list of plugins enabled by api
+func (k *Kong) GetPlugins() APIPlugins {
+	var plugins APIPlugins
+
+	url := fmt.Sprintf("%s/plugins", kongAdminService)
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could not get plugins: ", err)
+		return plugins
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Get plugins returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return plugins
+	}
+
+	// Parse from json
+	json.NewDecoder(resp.Body).Decode(&plugins)
+
+	return plugins
+}
+
+// DeletePlugin deletes Kong plugin
+func (k *Kong) DeletePlugin(apiName, pluginID string) error {
+	// Setup URL
+	url := fmt.Sprintf("%s/apis/%s/plugins/%s", kongAdminService, apiName, pluginID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		logrus.Error("Could not create delete request: ", err)
+		return err
+	}
+
+	resp, err := k.client.Do(req)
+	if err != nil {
+		logrus.Error("Could not delete kong plugin: ", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Delete plufin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Delete plugin returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Deleted plugin: %s for API: %s", pluginID, apiName)
+
+	return nil
+}
+
+// IsPluginExisting determines if a plugin is already existing
+func (k *Kong) IsPluginExisting(plugin Plugin) (bool, APIPluginData) {
 
 	for _, api := range plugin.Apis {
 		url := fmt.Sprintf("%s/apis/%s/plugins", kongAdminService, api)
@@ -152,7 +208,7 @@ func (k *Kong) IsPluginEnabled(plugin Plugin) (bool, APIPluginData) {
 
 		if resp.StatusCode != 200 {
 			bodyBytes, _ := ioutil.ReadAll(resp.Body)
-			logrus.Errorf("IsPluginEnabled plugin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+			logrus.Errorf("IsPluginExisting plugin returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
 			return false, APIPluginData{}
 		}
 
@@ -169,4 +225,18 @@ func (k *Kong) IsPluginEnabled(plugin Plugin) (bool, APIPluginData) {
 	}
 
 	return false, APIPluginData{}
+}
+
+// RemovePlugin takes an item out of the data array
+func RemovePlugin(s []APIPluginData, id string) []APIPluginData {
+	var index = -1
+	for i, p := range s {
+		if p.ID == id {
+			index = i
+			break
+		}
+	}
+
+	s[len(s)-1], s[index] = s[index], s[len(s)-1]
+	return s[:len(s)-1]
 }
