@@ -229,6 +229,10 @@ func (k *Kong) IsPluginExisting(plugin Plugin) (bool, APIPluginData) {
 
 // RemovePlugin takes an item out of the data array
 func RemovePlugin(s []APIPluginData, id string) []APIPluginData {
+	if len(s) == 0 {
+		return []APIPluginData{}
+	}
+
 	var index = -1
 	for i, p := range s {
 		if p.ID == id {

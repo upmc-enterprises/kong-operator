@@ -161,7 +161,7 @@ func (p *Processor) processKongEvent(c *tpr.KongCluster) error {
 }
 
 func (p *Processor) modifyKong(c *tpr.KongCluster) error {
-	logrus.Println("--------> Update Kong Event!")
+	logrus.Infof("--------> Update Kong Event! Namespace: [%s]", c.Metadata.Namespace)
 
 	p.process(c)
 

@@ -43,6 +43,22 @@ kubectl create -f https://raw.githubusercontent.com/stevesloka/microservice-samp
 kubectl create -f https://raw.githubusercontent.com/stevesloka/microservice-sample/master/k8s/service.yaml -n apps
 ```
 
+## Deploy Operator
+
+Use the following to deploy the operator to your cluster:
+
+```
+$ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-operator/master/example/operator.yaml
+```
+
+## Deploy Sample Cluster
+
+To get started quickly, setup the sample apps defined in previous section as well as deploy the operator to your cluster. Once those pieces are ready, then create the custom kong cluster:
+
+```
+$ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-operator/master/example/example-kong-cluster.json
+```
+
 ## Create JWT creds
 
 Currently, credentials are not
