@@ -16,7 +16,7 @@ The operator is built using the controller + third party resource model. Once th
 
 Watch a demo / walkthrough here:
 
-[![Kong Operator Demo](http://img.youtube.com/vi/ZzCXcmaikeg/0.jpg)](http://www.youtube.com/watch?v=ZzCXcmaikeg)<br>
+[![Kong Operator Demo](http://img.youtube.com/vi/ZzCXcmaikeg/1.jpg)](http://www.youtube.com/watch?v=ZzCXcmaikeg)<br>
 [https://www.youtube.com/watch?v=ZzCXcmaikeg](https://www.youtube.com/watch?v=ZzCXcmaikeg)
 
 
