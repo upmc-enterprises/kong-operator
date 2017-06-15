@@ -12,6 +12,14 @@ Kong needs a database (postgres or cassandra) to be running and with proper cred
 
 The operator is built using the controller + third party resource model. Once the controller is deployed to your cluster, it will automatically create the ThirdPartyResource. Next create a Kubernetes object type elasticsearchCluster to deploy the elastic cluster based upon the TPR.
 
+## Demo
+
+Watch a demo / walkthrough here:
+
+[![Kong Operator Demo](http://img.youtube.com/vi/ZzCXcmaikeg/0.jpg)](http://www.youtube.com/watch?v=ZzCXcmaikeg)<br>
+[https://www.youtube.com/watch?v=ZzCXcmaikeg](https://www.youtube.com/watch?v=ZzCXcmaikeg)
+
+
 ## ThirdPartyResource
 
 Use the following spec to customize your Kong cluster:
