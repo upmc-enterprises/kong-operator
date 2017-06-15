@@ -282,17 +282,17 @@ func (p *Processor) process(c *tpr.KongCluster) {
 func (p *Processor) deleteKong(c *tpr.KongCluster) error {
 	logrus.Println("--------> Kong Cluster deleted...removing all components...")
 
-	err := p.k8sclient.DeleteKongDeployment(p.clusters[c.Spec.Name].kong.KongAdminURL)
+	err := p.k8sclient.DeleteKongDeployment(c.Metadata.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete kong deployment:", err)
 	}
 
-	err = p.k8sclient.DeleteAdminService(p.clusters[c.Spec.Name].kong.KongAdminURL)
+	err = p.k8sclient.DeleteAdminService(c.Metadata.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete admin service:", err)
 	}
 
-	err = p.k8sclient.DeleteProxyService(p.clusters[c.Spec.Name].kong.KongAdminURL)
+	err = p.k8sclient.DeleteProxyService(c.Metadata.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete proxy service:", err)
 	}
