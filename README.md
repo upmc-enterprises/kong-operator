@@ -14,6 +14,8 @@ The operator is built using the controller + third party resource model. Once th
 
 ## ThirdPartyResource
 
+Use the following spec to customize your Kong cluster:
+
 - Spec:
   - Name: Name of cluster
   - Replicas: Number of kong instances to run in the cluster
@@ -43,6 +45,21 @@ kubectl create -f https://raw.githubusercontent.com/stevesloka/microservice-samp
 kubectl create -f https://raw.githubusercontent.com/stevesloka/microservice-sample/master/k8s/service.yaml -n apps
 ```
 
+### Output
+ 
+The sample app prints the IP of the pod which the request was handled as well as the time the request was handled:
+
+```
+$ http http://go-microservice.apps:8080                                                                                   [k8s-minikube/ 9:43:09]
+HTTP/1.1 200 OK
+Content-Length: 59
+Content-Type: text/plain; charset=utf-8
+Date: Wed, 14 Jun 2017 04:48:18 GMT
+
+Service: 172.17.0.4 
+Request Time: Wed Jun 14 04:48:18 2017
+```
+
 ## Deploy Operator
 
 Use the following to deploy the operator to your cluster:
@@ -51,20 +68,37 @@ Use the following to deploy the operator to your cluster:
 $ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-operator/master/example/operator.yaml
 ```
 
-## Deploy Sample Cluster
+## Quick Start
 
-To get started quickly, setup the sample apps defined in previous section as well as deploy the operator to your cluster. Once those pieces are ready, then create the custom kong cluster:
+To get started quickly, setup the sample apps defined in previous section as well as deploy the operator to your cluster. Once those pieces are ready, then create the custom kong cluster.
+
+### Deploy sample cluster
+
+After running this create, a Kong cluster will be created and configured automatically. Any request to `service-go.k8s.com` will route to the k8s service `http://go-microservice.apps.svc.cluster.local:8080` inside the apps namespace. In addition the JWT plugin will be enabled forcing authentication and a consumer named `slokas` will be generated. 
 
 ```
 $ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-operator/master/example/example-kong-cluster.json
 ```
 
-## Create JWT creds
+### Create JWT creds
 
-Currently, credentials are not
+Currently, credentials are not automatically created. In the case of JWT, a token needs to be created to from the creds that Kong generates. There are a number of ways to accomplish this, but one easy way is with this project (https://github.com/stevesloka/jwt-creator). Just pop in the secret and key from Kong and it will generate a sample JWT. After that, send a request to the API passing the token as a header:
+
 ```
-$ curl -X POST http://kong-admin.default.svc.cluster.local:8001/consumers/slokas/jwt -H "Content-Type: application/x-www-form-urlencoded"
+$ curl -X POST http://kong-admin.default:8444/consumers/slokas/jwt -H "Content-Type: application/x-www-form-urlencoded"
+
+# --- Generate token
+$ git clone https://github.com/stevesloka/jwt-creator.git
+$ (Update key / secret in code)
+$ go run main.go
+
+# --- Make request
+$ curl -i https://kong-proxy \
+    -H 'Authorization: Bearer <token>' \
+    -H 'Host: service-go.k8s.com'
 ```
+
+###
 
 ## Update existing TPR
 
@@ -91,4 +125,10 @@ To use your own Postgres db, just set the option `useSamplePostgres=false`, then
 ## Dev locally
 
 Use the following command to run the operator locally:
-`go run cmd/operator/main.go --kubecfg-file=${HOME}/.kube/config`
+```
+go run cmd/operator/main.go --kubecfg-file=${HOME}/.kube/config
+```
+
+## About
+
+Built by UPMC Enterprises in Pittsburgh, PA. http://enterprises.upmc.com/

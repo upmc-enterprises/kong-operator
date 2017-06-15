@@ -12,7 +12,7 @@
       "name": "go-microservice",
       "upstream_url": "http://go-microservice.apps.svc.cluster.local:8080",
       "hosts": [
-        "service-go.k8s.operator"
+        "service-go.k8s.com"
       ]
     }],
     "plugins": [
