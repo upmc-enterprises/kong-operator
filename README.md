@@ -85,7 +85,7 @@ $ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-oper
 Currently, credentials are not automatically created. In the case of JWT, a token needs to be created to from the creds that Kong generates. There are a number of ways to accomplish this, but one easy way is with this project (https://github.com/stevesloka/jwt-creator). Just pop in the secret and key from Kong and it will generate a sample JWT. After that, send a request to the API passing the token as a header:
 
 ```
-$ curl -X POST https://kong-admin.default:8444/consumers/slokas/jwt -H "Content-Type: application/x-www-form-urlencoded"
+$ curl -k -X POST https://kong-admin.default:8444/consumers/slokas/jwt -H "Content-Type: application/x-www-form-urlencoded"
 
 # --- Generate token
 $ git clone https://github.com/stevesloka/jwt-creator.git
