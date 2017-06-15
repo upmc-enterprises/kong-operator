@@ -26,10 +26,6 @@
         }]
       }
     ],
-    "consumers": [{
-      "username": "slokas",
-      "custom_id": "ABC123",
-      "maxNumCreds": 2
-    }]
+    "consumers": []
   }
 }

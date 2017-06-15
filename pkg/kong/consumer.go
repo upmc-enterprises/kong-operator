@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -44,6 +45,12 @@ type ConsumerTPR struct {
 type Consumer struct {
 	Username string `json:"username"`
 	CustomID string `json:"custom_id"`
+}
+
+// Consumers is the call to /consumers
+type Consumers struct {
+	Data  []Consumer `json:"data"`
+	Total int        `json:"total"`
 }
 
 // CreateConsumer creates a consumer
@@ -77,6 +84,38 @@ func (k *Kong) CreateConsumer(consumer ConsumerTPR) error {
 	return nil
 }
 
+// DeleteConsumer deletes a consumer
+func (k *Kong) DeleteConsumer(consumer Consumer) error {
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/%s", k.KongAdminURL, consumer.Username)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		logrus.Error("Could not delete consumer: ", err)
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := k.client.Do(req)
+
+	if err != nil {
+		logrus.Error("Could not delete consumer: ", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Delete consumer returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("Delete consumer returned: %d", resp.StatusCode)
+	}
+
+	logrus.Infof("Deleted consumer: %s", consumer.Username)
+
+	return nil
+}
+
 // ConsumerExists checks if a consumer exists already
 func (k *Kong) ConsumerExists(username string) bool {
 	// Setup URL
@@ -98,6 +137,33 @@ func (k *Kong) ConsumerExists(username string) bool {
 	}
 
 	return true
+}
+
+// GetConsumers gets list of consumers
+func (k *Kong) GetConsumers() Consumers {
+	var consumers Consumers
+
+	// Setup URL
+	url := fmt.Sprintf("%s/consumers/", k.KongAdminURL)
+
+	resp, err := k.client.Get(url)
+
+	if err != nil {
+		logrus.Error("Could not get kong consumers: ", err)
+		return consumers
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logrus.Errorf("Get consumers returned: %d Response: %s", resp.StatusCode, string(bodyBytes))
+		return consumers
+	}
+
+	json.NewDecoder(resp.Body).Decode(&consumers)
+
+	return consumers
 }
 
 // GetJWTPluginCreds gets creds for
@@ -172,4 +238,22 @@ func FindConsumer(a string, list []ConsumerTPR) (bool, ConsumerTPR) {
 		}
 	}
 	return false, ConsumerTPR{}
+}
+
+// RemoveConsumer takes an item out of the data array
+func RemoveConsumer(s []Consumer, username string) []Consumer {
+	if len(s) == 0 {
+		return []Consumer{}
+	}
+
+	var index = -1
+	for i, p := range s {
+		if p.Username == username {
+			index = i
+			break
+		}
+	}
+
+	s[len(s)-1], s[index] = s[index], s[len(s)-1]
+	return s[:len(s)-1]
 }

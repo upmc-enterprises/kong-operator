@@ -219,6 +219,8 @@ func (p *Processor) process(c *tpr.KongCluster) {
 	// Get current plugins from Kong
 	kongPlugins := p.clusters[c.Spec.Name].kong.GetPlugins()
 
+	kongConsumers := p.clusters[c.Spec.Name].kong.GetConsumers()
+
 	logrus.Infof("Found %d apis existing in kong api...", kongApis.Total)
 
 	// process apis
@@ -245,6 +247,8 @@ func (p *Processor) process(c *tpr.KongCluster) {
 			if !p.clusters[c.Spec.Name].kong.ConsumerExists(consumer.Username) {
 				p.clusters[c.Spec.Name].kong.CreateConsumer(consumer)
 			}
+
+			kongConsumers.Data = kong.RemoveConsumer(kongConsumers.Data, consumer.Username)
 		}
 
 		// --- Plugins
@@ -276,6 +280,12 @@ func (p *Processor) process(c *tpr.KongCluster) {
 	for _, plug := range kongPlugins.Data {
 		logrus.Infof("Deleting plugin: %s", plug.Name)
 		p.clusters[c.Spec.Name].kong.DeletePlugin(plug.APIId, plug.ID)
+	}
+
+	// Delete existing consumers left
+	for _, con := range kongConsumers.Data {
+		logrus.Infof("Deleting consumer: %s", con.Username)
+		p.clusters[c.Spec.Name].kong.DeleteConsumer(con)
 	}
 }
 
