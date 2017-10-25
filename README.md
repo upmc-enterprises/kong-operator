@@ -80,6 +80,8 @@ $ kubectl create -f https://raw.githubusercontent.com/upmc-enterprises/kong-oper
 
 To get started quickly, setup the sample apps defined in previous section as well as deploy the operator to your cluster. Once those pieces are ready, then create the custom kong cluster.
 
+_NOTE: The operator needs updated to handle v11 of Kong since now it's required to run migrations as a seperate step._
+
 ### Deploy sample cluster
 
 After running this create, a Kong cluster will be created and configured automatically. Any request to `service-go.k8s.com` will route to the k8s service `http://go-microservice.apps.svc.cluster.local:8080` inside the apps namespace. In addition the JWT plugin will be enabled forcing authentication and a consumer named `slokas` will be generated. 
