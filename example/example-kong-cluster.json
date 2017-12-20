@@ -1,6 +1,6 @@
 {
   "apiVersion": "enterprises.upmc.com/v1",
-  "kind": "KongCluster",
+  "kind": "Cluster",
   "metadata": {
     "name": "example-kong-cluster"
   },

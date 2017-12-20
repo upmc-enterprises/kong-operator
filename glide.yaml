@@ -1,0 +1,32 @@
+package: github.com/upmc-enterprises/kong-operator
+import:
+- package: github.com/Sirupsen/logrus
+  version: v1.0.4
+- package: github.com/golang/glog
+- package: k8s.io/api
+  subpackages:
+  - apps/v1beta2
+  - core/v1
+- package: k8s.io/apiextensions-apiserver
+  subpackages:
+  - pkg/apis/apiextensions/v1beta1
+  - pkg/client/clientset/clientset
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/apis/meta/v1
+  - pkg/fields
+  - pkg/runtime
+  - pkg/runtime/schema
+  - pkg/runtime/serializer
+  - pkg/types
+  - pkg/util/intstr
+  - pkg/watch
+- package: k8s.io/client-go
+  version: v6.0.0
+  subpackages:
+  - discovery
+  - kubernetes
+  - rest
+  - tools/cache
+  - tools/clientcmd
+  - util/flowcontrol
