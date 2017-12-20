@@ -25,13 +25,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 package pg
 
 import (
-	"fmt"
-
-	"github.com/Sirupsen/logrus"
+	"k8s.io/api/apps/v1beta2"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"github.com/Sirupsen/logrus"
+	"fmt"
+	"k8s.io/api/batch/v1"
 )
 
 // SimplePostgresDeployment returns a simple postgres deployment spec for testing purposes
@@ -40,71 +41,74 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 	replicas = int32(1)
 
 	// Check if deployment exists
-	deployment, err := k.Kclient.Deployments(namespace).Get("postgres")
+	deployment, err := k.KubernetesInterface.AppsV1beta2().Deployments(namespace).Get("postgres", metav1.GetOptions{})
 
 	if len(deployment.Name) == 0 {
 		logrus.Infof("%s not found, creating...", "postgres")
 
-		deployment := &v1beta1.Deployment{
-			ObjectMeta: v1.ObjectMeta{
+		deployment := &v1beta2.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
 				Name: "postgres",
 				Labels: map[string]string{
 					"name": "postgres",
-					"app":  "kong",
 				},
 			},
-			Spec: v1beta1.DeploymentSpec{
+			Spec: v1beta2.DeploymentSpec{
 				Replicas: &replicas,
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: v1.ObjectMeta{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"name": "postgres",
+					},
+				},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
 						Labels: map[string]string{
 							"name": "postgres",
-							"app":  "kong",
 						},
 					},
-					Spec: v1.PodSpec{
-						Containers: []v1.Container{
-							v1.Container{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							corev1.Container{
 								Name:  "postgres",
 								Image: "postgres:9.4",
-								Env: []v1.EnvVar{
-									v1.EnvVar{
+								Env: []corev1.EnvVar{
+									corev1.EnvVar{
 										Name:  "POSTGRES_USER",
 										Value: "kong",
 									},
-									v1.EnvVar{
+									corev1.EnvVar{
 										Name:  "POSTGRES_PASSWORD",
 										Value: "kong",
 									},
-									v1.EnvVar{
+									corev1.EnvVar{
 										Name:  "POSTGRES_DB",
 										Value: "kong",
 									},
-									v1.EnvVar{
+									corev1.EnvVar{
 										Name:  "PGDATA",
 										Value: "/var/lib/postgresql/data/pgdata",
 									},
 								},
-								Ports: []v1.ContainerPort{
-									v1.ContainerPort{
+								Ports: []corev1.ContainerPort{
+									corev1.ContainerPort{
 										Name:          "postgres",
 										ContainerPort: 5432,
-										Protocol:      v1.ProtocolTCP,
+										Protocol:      corev1.ProtocolTCP,
 									},
 								},
-								VolumeMounts: []v1.VolumeMount{
-									v1.VolumeMount{
+								VolumeMounts: []corev1.VolumeMount{
+									corev1.VolumeMount{
 										Name:      "pg-data",
 										MountPath: "/var/lib/postgresql/data",
 									},
 								},
 							},
 						},
-						Volumes: []v1.Volume{
-							v1.Volume{
+						Volumes: []corev1.Volume{
+							corev1.Volume{
 								Name: "pg-data",
-								VolumeSource: v1.VolumeSource{
-									EmptyDir: &v1.EmptyDirVolumeSource{},
+								VolumeSource: corev1.VolumeSource{
+									EmptyDir: &corev1.EmptyDirVolumeSource{},
 								},
 							},
 						},
@@ -113,7 +117,7 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 			},
 		}
 
-		_, err := k.Kclient.Deployments(namespace).Create(deployment)
+		_, err := k.KubernetesInterface.AppsV1beta2().Deployments(namespace).Create(deployment)
 
 		if err != nil {
 			logrus.Error("Could not create kong deployment: ", err)
@@ -131,38 +135,36 @@ func SimplePostgresDeployment(k *k8sutil.K8sutil, namespace string) error {
 func SimplePostgresService(k *k8sutil.K8sutil, namespace string) error {
 
 	// Check if service exists
-	svc, err := k.Kclient.Services(namespace).Get("postgres")
+	svc, err := k.KubernetesInterface.CoreV1().Services(namespace).Get("postgres", metav1.GetOptions{})
 
 	// Service missing, create
 	if len(svc.Name) == 0 {
 		logrus.Infof("%s not found, creating...", "postgres")
 
-		clientSvc := &v1.Service{
-			ObjectMeta: v1.ObjectMeta{
+		clientSvc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
 				Name: "postgres",
 				Labels: map[string]string{
 					"name": "postgres",
-					"app":  "kong",
 				},
 			},
-			Spec: v1.ServiceSpec{
+			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{
 					"name": "postgres",
-					"app":  "kong",
 				},
-				Ports: []v1.ServicePort{
-					v1.ServicePort{
+				Ports: []corev1.ServicePort{
+					corev1.ServicePort{
 						Name:       "pgql",
 						Port:       5432,
 						TargetPort: intstr.FromInt(5432),
 						Protocol:   "TCP",
 					},
 				},
-				Type: v1.ServiceTypeClusterIP,
+				Type: corev1.ServiceTypeClusterIP,
 			},
 		}
 
-		_, err := k.Kclient.Services(namespace).Create(clientSvc)
+		_, err := k.KubernetesInterface.CoreV1().Services(namespace).Create(clientSvc)
 
 		if err != nil {
 			logrus.Error("Could not create postgres service: ", err)
@@ -179,8 +181,8 @@ func SimplePostgresService(k *k8sutil.K8sutil, namespace string) error {
 // SimplePostgresSecret creates the postgres secrets
 func SimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
 
-	secret := &v1.Secret{
-		ObjectMeta: v1.ObjectMeta{
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "kong-postgres",
 		},
 		Data: map[string][]byte{
@@ -191,10 +193,58 @@ func SimplePostgresSecret(k *k8sutil.K8sutil, namespace string) error {
 		},
 	}
 
-	_, err := k.Kclient.Secrets(namespace).Create(secret)
+	_, err := k.KubernetesInterface.CoreV1().Secrets(namespace).Create(secret)
 
 	if err != nil {
 		logrus.Error("Could not create postgres secret: ", err)
+		return err
+	}
+
+	return nil
+}
+
+func SimpleKongMigrationJob(k *k8sutil.K8sutil, namespace string) error {
+
+	job := v1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "kong-migration",
+		},
+		Spec: v1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "kong-migration",
+				},
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyOnFailure,
+					Containers: []corev1.Container{
+						{
+							Name: "kong-migration",
+							Image: "kong",
+							Env: []corev1.EnvVar{
+								{
+									Name: "KONG_NGINX_DAEMON",
+									Value: "off",
+								},
+								{
+									Name: "KONG_PG_PASSWORD",
+									Value: "kong",
+								},
+								{
+									Name: "KONG_PG_HOST",
+									Value: "postgres.default.svc.cluster.local",
+								},
+							},
+							Command: []string{ "/bin/sh", "-c", "kong migrations up" },
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := k.KubernetesInterface.BatchV1().Jobs(namespace).Create(&job)
+	if err != nil {
+		logrus.Error("Could not create job for kong migration", err)
 		return err
 	}
 

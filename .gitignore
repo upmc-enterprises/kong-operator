@@ -1,2 +1,4 @@
 _output/
 .DS_Store
+.idea/
+vendor/

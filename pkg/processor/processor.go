@@ -31,7 +31,7 @@ import (
 	"github.com/upmc-enterprises/kong-operator/pkg/k8sutil"
 	"github.com/upmc-enterprises/kong-operator/pkg/kong"
 	"github.com/upmc-enterprises/kong-operator/pkg/pg"
-	"github.com/upmc-enterprises/kong-operator/pkg/tpr"
+	"github.com/upmc-enterprises/kong-operator/pkg/apis/cr/v1"
 )
 
 // processorLock ensures that reconciliation and event processing does
@@ -49,7 +49,7 @@ type Processor struct {
 
 // KongCluster represents an instance of a cluster setup via TPR
 type KongCluster struct {
-	cluster *tpr.KongCluster
+	cluster *v1.Cluster
 	kong    *kong.Kong
 }
 
@@ -104,7 +104,7 @@ func (p *Processor) refreshClusters() error {
 		return err
 	}
 
-	for _, cluster := range currentClusters {
+	for _, cluster := range currentClusters.Items {
 		logrus.Infof("Found cluster: %s", cluster.Spec.Name)
 		p.addInstanceIfNotExisting(cluster)
 	}
@@ -112,7 +112,7 @@ func (p *Processor) refreshClusters() error {
 	return nil
 }
 
-func (p *Processor) addInstanceIfNotExisting(cluster tpr.KongCluster) {
+func (p *Processor) addInstanceIfNotExisting(cluster v1.Cluster) {
 	if _, exists := p.clusters[cluster.Spec.Name]; exists {
 		// Cluster already existing
 	} else {
@@ -121,17 +121,17 @@ func (p *Processor) addInstanceIfNotExisting(cluster tpr.KongCluster) {
 	}
 }
 
-func (p *Processor) createKongInstance(cluster tpr.KongCluster) KongCluster {
+func (p *Processor) createKongInstance(cluster v1.Cluster) KongCluster {
 
-	kong, err := kong.New(cluster.Metadata.Namespace)
+	kong, err := kong.New(cluster.ObjectMeta.Namespace)
 
 	if err != nil {
 		logrus.Error("Error creating kong instance: ", err)
 	}
 
 	kc := KongCluster{
-		cluster: &tpr.KongCluster{
-			Spec: tpr.ClusterSpec{
+		cluster: &v1.Cluster{
+			Spec: v1.ClusterSpec{
 				Name:              cluster.Spec.Name,
 				Replicas:          cluster.Spec.Replicas,
 				BaseImage:         cluster.Spec.BaseImage,
@@ -145,30 +145,30 @@ func (p *Processor) createKongInstance(cluster tpr.KongCluster) KongCluster {
 	return kc
 }
 
-func (p *Processor) processKongEvent(c *tpr.KongCluster) error {
+func (p *Processor) processKongEvent(c *v1.Cluster) error {
 	processorLock.Lock()
 	defer processorLock.Unlock()
 
 	switch {
-	case c.Type == "ADDED":
+	case c.Status.State == v1.ClusterStateAdded:
 		return p.createKong(c)
-	case c.Type == "MODIFIED":
+	case c.Status.State == v1.ClusterStateModified:
 		return p.modifyKong(c)
-	case c.Type == "DELETED":
+	case c.Status.State == v1.ClusterStateDeleted:
 		return p.deleteKong(c)
 	}
 	return nil
 }
 
-func (p *Processor) modifyKong(c *tpr.KongCluster) error {
-	logrus.Infof("--------> Update Kong Event! Namespace: [%s]", c.Metadata.Namespace)
+func (p *Processor) modifyKong(c *v1.Cluster) error {
+	logrus.Infof("--------> Update Kong Event! Namespace: [%s]", c.ObjectMeta.Namespace)
 
 	p.process(c)
 
 	return nil
 }
 
-func (p *Processor) createKong(c *tpr.KongCluster) error {
+func (p *Processor) createKong(c *v1.Cluster) error {
 	logrus.Println("--------> Create Kong Event!")
 
 	// Create instance in local cluster list
@@ -176,7 +176,23 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 
 	// Deploy sample postgres deployments?
 	if c.Spec.UseSamplePostgres {
-		pg.SimplePostgresSecret(p.k8sclient, c.Metadata.Namespace)
+		err := pg.SimplePostgresDeployment(p.k8sclient, c.ObjectMeta.Namespace)
+		if err != nil {
+			// probably want to update the state of the object to "deleted/recycled" or similar
+			return err
+		}
+		err = pg.SimplePostgresService(p.k8sclient, c.ObjectMeta.Namespace)
+		if err != nil {
+			return err
+		}
+		err = pg.SimplePostgresSecret(p.k8sclient, c.ObjectMeta.Namespace)
+		if err != nil {
+			return err
+		}
+		err = pg.SimpleKongMigrationJob(p.k8sclient, c.ObjectMeta.Namespace)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Is a base image defined in the custom cluster?
@@ -185,11 +201,11 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 	logrus.Infof("Using [%s] as image for es cluster", baseImage)
 
 	// Create Services
-	p.k8sclient.CreateKongAdminService(c.Metadata.Namespace)
-	p.k8sclient.CreateKongProxyService(c.Metadata.Namespace)
+	p.k8sclient.CreateKongAdminService(c.ObjectMeta.Namespace)
+	p.k8sclient.CreateKongProxyService(c.ObjectMeta.Namespace)
 
 	// Create deployment
-	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas, c.Metadata.Namespace)
+	p.k8sclient.CreateKongDeployment(baseImage, &c.Spec.Replicas, c.ObjectMeta.Namespace)
 
 	// Wait for kong to be ready
 	timeout := make(chan bool, 1)
@@ -209,7 +225,7 @@ func (p *Processor) createKong(c *tpr.KongCluster) error {
 	return nil
 }
 
-func (p *Processor) process(c *tpr.KongCluster) {
+func (p *Processor) process(c *v1.Cluster) {
 	// Lookup cluster
 	p.addInstanceIfNotExisting(*c)
 
@@ -289,26 +305,26 @@ func (p *Processor) process(c *tpr.KongCluster) {
 	}
 }
 
-func (p *Processor) deleteKong(c *tpr.KongCluster) error {
+func (p *Processor) deleteKong(c *v1.Cluster) error {
 	logrus.Println("--------> Kong Cluster deleted...removing all components...")
 
-	err := p.k8sclient.DeleteKongDeployment(c.Metadata.Namespace)
+	err := p.k8sclient.DeleteKongDeployment(c.ObjectMeta.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete kong deployment:", err)
 	}
 
-	err = p.k8sclient.DeleteAdminService(c.Metadata.Namespace)
+	err = p.k8sclient.DeleteAdminService(c.ObjectMeta.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete admin service:", err)
 	}
 
-	err = p.k8sclient.DeleteProxyService(c.Metadata.Namespace)
+	err = p.k8sclient.DeleteProxyService(c.ObjectMeta.Namespace)
 	if err != nil {
 		logrus.Error("Could not delete proxy service:", err)
 	}
 
 	if c.Spec.UseSamplePostgres {
-		pg.DeleteSimplePostgres(p.k8sclient, c.Metadata.Namespace)
+		pg.DeleteSimplePostgres(p.k8sclient, c.ObjectMeta.Namespace)
 	}
 
 	return nil
